@@ -11,6 +11,7 @@ on:
       - 'build/ZEUSWebUI.java'
       - 'build/ZEUSPBAP.java'
       - 'build/ZEUSExport.java'
+      - 'build/ZEUSConsent.java'
       - 'build/interface.html'
       - '.github/workflows/build-zeus-apk.yml'
   workflow_dispatch:
@@ -72,7 +73,7 @@ jobs:
           python3 build/patch_apk.py decoded
           python3 build/patch_red_room.py decoded
           mkdir -p classes dex-out
-          javac -source 8 -target 8 -classpath "$ANDROID_HOME/platforms/android-35/android.jar" -d classes build/ZEUSExport.java build/ZEUSBluetooth.java build/ZEUSLightning.java build/ZEUSWebUI.java build/ZEUSPBAP.java
+          javac -source 8 -target 8 -classpath "$ANDROID_HOME/platforms/android-35/android.jar" -d classes build/ZEUSExport.java build/ZEUSBluetooth.java build/ZEUSLightning.java build/ZEUSWebUI.java build/ZEUSPBAP.java build/ZEUSConsent.java
           mapfile -t CLASS_FILES < <(find classes -name '*.class' -print)
           "$ANDROID_HOME/build-tools/35.0.0/d8" --lib "$ANDROID_HOME/platforms/android-35/android.jar" --min-api 21 --output dex-out "${CLASS_FILES[@]}"
           cp dex-out/classes.dex classes2.dex
