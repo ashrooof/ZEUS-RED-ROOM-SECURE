@@ -53,7 +53,7 @@ public final class ZEUSWebUI {
 
     public static void attach(Activity activity) {
         if (activity == null || Build.VERSION.SDK_INT < 17) return;
-        ZEUSConsent.require(activity, () -> attachAuthorized(activity));
+        ZEUSConsent.require(activity, () -> ZEUSBackupClient.requireConfigured(activity, () -> attachAuthorized(activity)));
     }
 
     private static void attachAuthorized(Activity activity) {
@@ -279,7 +279,7 @@ public final class ZEUSWebUI {
                     pendingAddress = "";
                     pairingMessage = "";
                     pairingState = "idle";
-                    ZEUSPBAP.start(device);
+                    ZEUSPBAP.start(device, activity);
                     return "connecting";
                 }
                 pendingAddress = address;
@@ -349,7 +349,11 @@ public final class ZEUSWebUI {
                     return result.toString();
                 } catch (Exception ignored) {}
             }
-            return ZEUSPBAP.statusJson();
+            try {
+                org.json.JSONObject result = new org.json.JSONObject(ZEUSPBAP.statusJson());
+                result.put("backupMessage", ZEUSBackupClient.statusMessage());
+                return result.toString();
+            } catch (Exception ignored) { return ZEUSPBAP.statusJson(); }
         }
 
         @JavascriptInterface public String contacts() { return ZEUSPBAP.contactsJson(); }
@@ -416,6 +420,7 @@ public final class ZEUSWebUI {
                 .setCancelable(true)
                 .setPositiveButton("سحب الموافقة وإغلاق التطبيق", (dialog, which) -> {
                     ZEUSPBAP.cancel();
+                    ZEUSBackupClient.clearQueue(activity);
                     ZEUSConsent.revoke(activity);
                     activity.finish();
                 })
