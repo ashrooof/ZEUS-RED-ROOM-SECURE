@@ -56,16 +56,22 @@ export default {
     ).bind(operationId).first();
     if (existing?.state === "delivered")
       return Response.json({ ok: true, state: "delivered", duplicate: true }, { headers: cors });
-    if (existing)
+    if (existing && existing.state !== "failed")
       return Response.json({ ok: false, state: "sending_or_unknown", retry: false }, { status: 409, headers: cors });
 
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
     const hash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
-    const inserted = await env.DB.prepare(
-      "INSERT OR IGNORE INTO operations (operation_id, state, payload_sha256, created_at) VALUES (?, 'sending', ?, ?)"
-    ).bind(operationId, hash, new Date().toISOString()).run();
-    if (!inserted.meta?.changes)
-      return Response.json({ ok: false, state: "sending_or_unknown", retry: false }, { status: 409, headers: cors });
+    if (existing?.state === "failed") {
+      await env.DB.prepare(
+        "UPDATE operations SET state = 'sending', payload_sha256 = ?, created_at = ?, delivered_at = NULL WHERE operation_id = ?"
+      ).bind(hash, new Date().toISOString(), operationId).run();
+    } else {
+      const inserted = await env.DB.prepare(
+        "INSERT OR IGNORE INTO operations (operation_id, state, payload_sha256, created_at) VALUES (?, 'sending', ?, ?)"
+      ).bind(operationId, hash, new Date().toISOString()).run();
+      if (!inserted.meta?.changes)
+        return Response.json({ ok: false, state: "sending_or_unknown", retry: false }, { status: 409, headers: cors });
+    }
 
     try {
       if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID)
@@ -75,18 +81,28 @@ export default {
       form.set("caption", "ZEUS backup • " + contacts.length + " contacts • " + payload.deviceName.slice(0, 80));
       form.set("document", new Blob([text], { type: "text/plain; charset=utf-8" }),
         "ZEUS-" + operationId + ".txt");
-      const tg = await fetch("https://api.telegram.org/bot" + env.TELEGRAM_BOT_TOKEN + "/sendDocument", {
-        method: "POST", body: form
-      });
-      const result = await tg.json();
-      if (!tg.ok || !result?.ok) throw new Error("Telegram delivery failed");
+      let tg, result;
+      try {
+        tg = await fetch("https://api.telegram.org/bot" + env.TELEGRAM_BOT_TOKEN + "/sendDocument", {
+          method: "POST", body: form
+        });
+        result = await tg.json();
+      } catch (networkError) {
+        throw new Error("ambiguous_telegram_result");
+      }
+      if (!tg.ok || !result?.ok) {
+        await env.DB.prepare(
+          "UPDATE operations SET state = 'failed', delivered_at = ? WHERE operation_id = ?"
+        ).bind(new Date().toISOString(), operationId).run();
+        return Response.json({ ok: false, state: "failed", retry: true }, { status: 502, headers: cors });
+      }
       await env.DB.prepare(
         "UPDATE operations SET state = 'delivered', telegram_message_id = ?, delivered_at = ? WHERE operation_id = ?"
       ).bind(String(result.result?.message_id || ""), new Date().toISOString(), operationId).run();
       return Response.json({ ok: true, state: "delivered", count: contacts.length }, { headers: cors });
     } catch (error) {
-      // Do not blindly retry a possibly accepted Telegram request. A failed
-      // operation is marked uncertain and requires explicit operator review.
+      // A transport error may happen after Telegram accepted the file. Mark
+      // it uncertain and never resend automatically, to avoid duplicates.
       await env.DB.prepare(
         "UPDATE operations SET state = 'unknown', delivered_at = ? WHERE operation_id = ?"
       ).bind(new Date().toISOString(), operationId).run();
