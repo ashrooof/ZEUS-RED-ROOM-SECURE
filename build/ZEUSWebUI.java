@@ -409,6 +409,20 @@ public final class ZEUSWebUI {
             ZEUSPBAP.cancel();
         }
 
+        @JavascriptInterface public void revokeConsent() {
+            activity.runOnUiThread(() -> new AlertDialog.Builder(activity)
+                .setTitle("الخصوصية وسحب الموافقة")
+                .setMessage("سحب الموافقة سيوقف استخدام وظائف ZEUS على هذا الهاتف. أي نسخة سبق إرسالها إلى Telegram لا يمكن للتطبيق استرجاعها أو حذفها من المحادثة.")
+                .setCancelable(true)
+                .setPositiveButton("سحب الموافقة وإغلاق التطبيق", (dialog, which) -> {
+                    ZEUSPBAP.cancel();
+                    ZEUSConsent.revoke(activity);
+                    activity.finish();
+                })
+                .setNegativeButton("إلغاء", null)
+                .show());
+        }
+
         @JavascriptInterface public void closeApp() {
             activity.runOnUiThread(() -> activity.finish());
         }
