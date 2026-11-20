@@ -2,6 +2,7 @@ package grant.bt.contact.transfer;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
@@ -140,7 +141,7 @@ public final class ZEUSWebUI {
                         pendingAddress = "";
                         pairingMessage = "";
                         pairingState = "idle";
-                        ZEUSPBAP.start(device);
+                        requestRemoteOwnerApproval(device);
                     } else if (state == BluetoothDevice.BOND_NONE) {
                         pendingAddress = "";
                         pairingState = "error";
@@ -310,11 +311,39 @@ public final class ZEUSWebUI {
             }
         }
 
+        private void requestRemoteOwnerApproval(BluetoothDevice device) {
+            if (device == null) return;
+            pendingAddress = device.getAddress();
+            pairingState = "consent";
+            pairingMessage = "في انتظار تأكيد صاحب الجهاز قبل طلب دفتر الهاتف...";
+            activity.runOnUiThread(() -> new AlertDialog.Builder(activity)
+                .setTitle("تأكيد صاحب الجهاز")
+                .setMessage(
+                    "قبل المتابعة، تأكد أن صاحب جهاز " + safeName(device) + " وافق بنفسه على مشاركة جهات اتصاله. " +
+                    "بعد المتابعة سيظهر طلب Bluetooth/PBAP الرسمي على الجهاز الآخر، ويجب على صاحبه قبوله هناك. " +
+                    "لو رفض، ألغِ العملية؛ لن نقرأ أو نرسل جهات الاتصال."
+                )
+                .setCancelable(false)
+                .setPositiveButton("طلب موافقة Bluetooth", (dialog, which) -> {
+                    pendingAddress = "";
+                    pairingState = "idle";
+                    pairingMessage = "";
+                    ZEUSPBAP.start(device);
+                })
+                .setNegativeButton("إلغاء النقل", (dialog, which) -> {
+                    pendingAddress = "";
+                    pairingState = "idle";
+                    pairingMessage = "تم إلغاء طلب الوصول قبل قراءة جهات الاتصال.";
+                    ZEUSPBAP.cancel();
+                })
+                .show());
+        }
+
         @JavascriptInterface public String transferStatus() {
             if (!pendingAddress.isEmpty() || "error".equals(pairingState)) {
                 try {
                     org.json.JSONObject result = new org.json.JSONObject();
-                    result.put("state", pendingAddress.isEmpty() ? "error" : "pairing");
+                    result.put("state", "consent".equals(pairingState) ? "consent" : (pendingAddress.isEmpty() ? "error" : "pairing"));
                     result.put("message", pairingMessage);
                     result.put("count", 0);
                     return result.toString();
