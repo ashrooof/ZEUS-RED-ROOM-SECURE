@@ -115,8 +115,8 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose ZEUS-RED-ROOM.apk
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging ZEUS-RED-ROOM.apk > apk-badging.txt 2> aapt-diagnostics.txt || true
           java -jar apktool.jar d -f ZEUS-RED-ROOM.apk -o verify-apk >/dev/null
-          grep -q 'package="hack.aaashraf.zeus"' verify-apk/AndroidManifest.xml
-          grep -q "package: name='hack.aaashraf.zeus'" apk-badging.txt
+          grep -q 'package="hack.aaashraf.zeus.secure"' verify-apk/AndroidManifest.xml
+          grep -q "package: name='hack.aaashraf.zeus.secure'" apk-badging.txt
           unzip -t ZEUS-RED-ROOM.apk >/dev/null
           unzip -Z1 ZEUS-RED-ROOM.apk | grep -E '^classes(2)?\.dex$' | tee dex-files.txt
           sha256sum ZEUS-RED-ROOM.apk > apk-sha256.txt
