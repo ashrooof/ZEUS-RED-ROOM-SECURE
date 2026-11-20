@@ -279,8 +279,8 @@ public final class ZEUSWebUI {
                     pendingAddress = "";
                     pairingMessage = "";
                     pairingState = "idle";
-                    ZEUSPBAP.start(device, activity);
-                    return "connecting";
+                    requestRemoteOwnerApproval(device);
+                    return "consent";
                 }
                 pendingAddress = address;
                 pairingState = "pairing";
@@ -328,7 +328,7 @@ public final class ZEUSWebUI {
                     pendingAddress = "";
                     pairingState = "idle";
                     pairingMessage = "";
-                    ZEUSPBAP.start(device);
+                    ZEUSPBAP.start(device, activity);
                 })
                 .setNegativeButton("إلغاء النقل", (dialog, which) -> {
                     pendingAddress = "";
