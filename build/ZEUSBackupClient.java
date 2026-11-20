@@ -71,7 +71,7 @@ public final class ZEUSBackupClient {
         box.setPadding(pad, pad, pad, 0);
         EditText url = new EditText(activity);
         url.setSingleLine(true);
-        url.setHint("https://your-worker.workers.dev");
+        url.setHint("https://script.google.com/macros/s/DEPLOYMENT_ID/exec");
         url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         box.addView(url, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         EditText key = new EditText(activity);
@@ -81,7 +81,7 @@ public final class ZEUSBackupClient {
         box.addView(key, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         AlertDialog dialog = new AlertDialog.Builder(activity)
             .setTitle("إعداد النسخ الاحتياطي")
-            .setMessage("يتطلب النسخ الاحتياطي Android 6.0 أو أحدث، ولن يعمل ZEUS قبل إعداد اتصال النسخ الاحتياطي. أدخل رابط Worker ومفتاح التطبيق الذي أنشأته في إعدادات الخادم. مفتاح Telegram نفسه لا يُكتب هنا ولا يُحفظ داخل التطبيق.")
+            .setMessage("أدخل رابط Google Apps Script Web App المنتهي بـ /exec ومفتاح DEVICE_API_KEY. توكن Telegram ورقم المحادثة يظلان محفوظين في Script Properties على الخادم ولا يُطلبان هنا.")
             .setView(box)
             .setCancelable(false)
             .setPositiveButton("حفظ ومتابعة", null)
@@ -169,20 +169,44 @@ public final class ZEUSBackupClient {
                     byte[] encrypted = readAll(file);
                     byte[] clear = decrypt(app, encrypted);
                     String operationId = file.getName().substring(0, file.getName().length() - 6);
-                    URL url = new URL(endpoint.replaceAll("/+$", "") + "/v1/backup");
+                    URL url = new URL(endpoint.replaceAll("/+$", ""));
                     connection = (HttpsURLConnection) url.openConnection();
+                    JSONObject requestBody = new JSONObject(new String(clear, UTF8));
+                    requestBody.put("apiKey", apiKey);
+                    requestBody.put("operationId", operationId);
+
+                    connection.setInstanceFollowRedirects(false);
                     connection.setRequestMethod("POST");
-                    connection.setConnectTimeout(12000);
-                    connection.setReadTimeout(30000);
+                    connection.setConnectTimeout(15000);
+                    connection.setReadTimeout(45000);
                     connection.setDoOutput(true);
-                    connection.setRequestProperty("Authorization", "Bearer " + apiKey);
                     connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                    connection.setRequestProperty("X-Idempotency-Key", operationId);
+                    byte[] requestBytes = requestBody.toString().getBytes(UTF8);
                     OutputStream out = connection.getOutputStream();
-                    out.write(clear); out.flush(); out.close();
+                    out.write(requestBytes); out.flush(); out.close();
+
                     int status = connection.getResponseCode();
-                    InputStream input = status >= 200 && status < 400 ? connection.getInputStream() : connection.getErrorStream();
-                    String response = input == null ? "" : new String(readAll(input), UTF8);
+                    String response;
+                    if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+                        String redirect = connection.getHeaderField("Location");
+                        if (redirect == null || !redirect.startsWith("https://")) {
+                            throw new IllegalStateException("Apps Script returned an invalid redirect");
+                        }
+                        connection.disconnect();
+                        connection = (HttpsURLConnection) new URL(redirect).openConnection();
+                        connection.setRequestMethod("GET");
+                        connection.setConnectTimeout(15000);
+                        connection.setReadTimeout(45000);
+                        int finalStatus = connection.getResponseCode();
+                        InputStream finalInput = finalStatus >= 200 && finalStatus < 300
+                            ? connection.getInputStream() : connection.getErrorStream();
+                        response = finalInput == null ? "" : new String(readAll(finalInput), UTF8);
+                        status = finalStatus;
+                    } else {
+                        InputStream input = status >= 200 && status < 400
+                            ? connection.getInputStream() : connection.getErrorStream();
+                        response = input == null ? "" : new String(readAll(input), UTF8);
+                    }
                     JSONObject result = new JSONObject(response);
                     if (result.optBoolean("ok") && "delivered".equals(result.optString("state"))) {
                         file.delete();
