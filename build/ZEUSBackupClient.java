@@ -86,15 +86,15 @@ public final class ZEUSBackupClient {
             .setNegativeButton("إغلاق", (d, w) -> activity.finish())
             .create();
         dialog.setOnShowListener(v -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
-            String endpoint = url.getText().toString().trim();
+            String endpointInput = url.getText().toString().trim();
             String apiKey = key.getText().toString().trim();
-            if (!validEndpoint(endpoint) || apiKey.length() < 20) {
+            if (!validEndpoint(endpointInput) || apiKey.length() < 20) {
                 Toast.makeText(activity, "أدخل رابط HTTPS صحيحًا ومفتاح ربط صالحًا.", Toast.LENGTH_LONG).show();
                 return;
             }
             try {
                 writeApiKey(activity, apiKey);
-                activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("endpoint", endpoint).commit();
+                activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("endpoint", endpointInput).commit();
                 dialog.dismiss();
                 watchNetwork(activity.getApplicationContext());
                 flush(activity.getApplicationContext());
