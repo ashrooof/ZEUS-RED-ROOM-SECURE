@@ -156,6 +156,18 @@ if 'android.permission.BLUETOOTH_SCAN' not in m:
         '<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>\n'
         '    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>\n'
         '    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>')
+# Consent is installation-scoped: do not restore app-private preferences or queue on reinstall.
+# Explicitly disable Android cloud/device backup for this patched APK.
+if re.search(r'<application\\b[^>]*\\bandroid:allowBackup=', m):
+    m = re.sub(r'android:allowBackup="[^"]*"', 'android:allowBackup="false"', m, count=1)
+else:
+    m = re.sub(r'<application\\b', '<application android:allowBackup="false"', m, count=1)
+if re.search(r'<application\\b[^>]*\\bandroid:fullBackupContent=', m):
+    m = re.sub(r'android:fullBackupContent="[^"]*"', 'android:fullBackupContent="false"', m, count=1)
+else:
+    m = re.sub(r'<application\\b', '<application android:fullBackupContent="false"', m, count=1)
+if 'android:allowBackup="false"' not in m or 'android:fullBackupContent="false"' not in m:
+    raise SystemExit("Could not disable Android backup for installation-scoped consent")
 write(manifest, m)
 revenue = root / "smali/grant/bt/contact/transfer/Revenue/Revenue.smali"
 r = read(revenue)
