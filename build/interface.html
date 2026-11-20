@@ -215,6 +215,10 @@ input,textarea,[contenteditable="true"]{-webkit-user-select:text!important;user-
     <span class="txt"><b>تواصل معي على تيليجرام</b></span>
   </a>
   <button class="btn" id="openLog"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 10h16M4 15h10M4 20h7"/></svg></span><span class="txt"><b>سجل الجهات المحفوظة</b></span></button>
+  <button class="btn" id="privacy">
+    <span class="ico"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5.2 3.4 9.1 8 11 4.6-1.9 8-5.8 8-11V5l-8-3zm0 3 5 1.9V11c0 3.8-2.2 6.8-5 8.3-2.8-1.5-5-4.5-5-8.3V6.9L12 5z"/><path d="M11 8h2v5h-2zm0 6.5h2v2h-2z"/></svg></span>
+    <span class="txt"><b>الخصوصية وسحب الموافقة</b></span>
+  </button>
   <button class="btn" id="exit">
     <span class="ico"><svg viewBox="0 0 24 24"><path d="M13 3h-2v10h2zm4.8 2.2-1.4 1.4A7 7 0 1 1 7.6 6.6L6.2 5.2a9 9 0 1 0 11.6 0z"/></svg></span>
     <span class="txt"><b>خروج من التطبيق</b></span>
@@ -253,6 +257,7 @@ const dots=document.getElementById('dots'),menu=document.getElementById('menu');
 function setMenu(o){menu.classList.toggle('open',o);dots.setAttribute('aria-expanded',o)}
 dots.onclick=e=>{e.stopPropagation();setMenu(!menu.classList.contains('open'))};
 document.getElementById('openLog').onclick=()=>{setMenu(false);renderLog()};
+document.getElementById('privacy').onclick=()=>{setMenu(false);if(window.ZEUS&&ZEUS.revokeConsent)ZEUS.revokeConsent()};
 document.addEventListener('click',e=>{if(!menu.contains(e.target))setMenu(false)});
 document.getElementById('exit').onclick=()=>{
   window.close();
