@@ -2,7 +2,7 @@ name: Build ZEUS RED ROOM APK
 
 on:
   push:
-    branches: [zeus-red-room]
+    branches: [main]
     paths:
       - 'build/fonts/**'
       - 'build/patch_red_room.py'
@@ -11,6 +11,7 @@ on:
       - 'build/ZEUSWebUI.java'
       - 'build/ZEUSPBAP.java'
       - 'build/ZEUSExport.java'
+      - 'build/ZEUSConsent.java'
       - 'build/ZEUSConsent.java'
       - 'build/interface.html'
       - '.github/workflows/build-zeus-apk.yml'
@@ -25,6 +26,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Retrieve original Build 90 base assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p original build/fonts
+          curl -fL "https://raw.githubusercontent.com/ashrooof/Contacts-Web-App/zeus-red-room/original/ASHRAF%20BASHA_1.4.apk" -o "original/ASHRAF BASHA_1.4.apk"
+          curl -fL "https://raw.githubusercontent.com/ashrooof/Contacts-Web-App/zeus-red-room/build/fonts/ZEUS-RED-ROOM-FONTS.zip" -o "build/fonts/ZEUS-RED-ROOM-FONTS.zip"
+          test -s "original/ASHRAF BASHA_1.4.apk"
+          test -s "build/fonts/ZEUS-RED-ROOM-FONTS.zip"
 
       - name: Unpack user-supplied font files
         shell: bash
