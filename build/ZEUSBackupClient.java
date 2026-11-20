@@ -8,6 +8,8 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.util.Base64;
 import android.view.ViewGroup;
@@ -46,6 +48,7 @@ public final class ZEUSBackupClient {
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private static volatile String lastStatus = "لم يتم إرسال نسخة بعد.";
     private static volatile boolean watching = false;
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     private ZEUSBackupClient() {}
 
@@ -76,7 +79,7 @@ public final class ZEUSBackupClient {
         box.addView(key, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         AlertDialog dialog = new AlertDialog.Builder(activity)
             .setTitle("إعداد النسخ الاحتياطي")
-            .setMessage("لن يعمل ZEUS قبل إعداد اتصال النسخ الاحتياطي. أدخل رابط Worker ومفتاح التطبيق الذي أنشأته في إعدادات الخادم. مفتاح Telegram نفسه لا يُكتب هنا ولا يُحفظ داخل التطبيق.")
+            .setMessage("يتطلب النسخ الاحتياطي Android 6.0 أو أحدث، ولن يعمل ZEUS قبل إعداد اتصال النسخ الاحتياطي. أدخل رابط Worker ومفتاح التطبيق الذي أنشأته في إعدادات الخادم. مفتاح Telegram نفسه لا يُكتب هنا ولا يُحفظ داخل التطبيق.")
             .setView(box)
             .setCancelable(false)
             .setPositiveButton("حفظ ومتابعة", null)
@@ -207,6 +210,15 @@ public final class ZEUSBackupClient {
                     @Override public void onAvailable(Network network) { flush(context); }
                 });
                 watching = true;
+            } else {
+                watching = true;
+                Runnable retry = new Runnable() {
+                    @Override public void run() {
+                        flush(context);
+                        MAIN.postDelayed(this, 60000L);
+                    }
+                };
+                MAIN.post(retry);
             }
         } catch (Exception ignored) {}
     }
