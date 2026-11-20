@@ -23,4 +23,4 @@ The app requires a deployed Cloudflare Worker, D1 database, and owner-configured
 
 ## Release status
 
-Implementation is in progress. The APK has not passed a final clean CI build and has not yet been tested on physical Android devices. Do not treat this repository as a production release until the latest Actions run succeeds and Bluetooth/PBAP/Telegram flows are verified on real devices.
+Implementation is in progress. The first clean CI APK build has succeeded. The APK is still a test build: Bluetooth/PBAP behavior has not yet been validated on physical devices, and Telegram delivery requires deploying the Worker/D1 backend and entering its URL plus DEVICE_API_KEY on first launch. Do not treat it as a production release until those device and live-backend tests pass.
