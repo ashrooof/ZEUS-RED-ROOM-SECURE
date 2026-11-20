@@ -137,6 +137,10 @@ write(strings, s)
 # Disable AdMob/Amazon/AppLovin entry points and lifecycle hooks.
 manifest = root / "AndroidManifest.xml"
 m = read(manifest)
+if 'android.permission.INTERNET' not in m:
+    m = m.replace('</manifest>', '    <uses-permission android:name="android.permission.INTERNET"/>\\n</manifest>')
+if 'android.permission.ACCESS_NETWORK_STATE' not in m:
+    m = m.replace('</manifest>', '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\\n</manifest>')
 m = re.sub(r'\s*<uses-permission android:name="com\.android\.vending\.BILLING"[^>]*/>', '', m)
 m = re.sub(r'\s*<activity[^>]*android:name="com\.google\.android\.gms\.ads\.AdActivity"[^>]*/>', '', m)
 m = re.sub(r'\s*<activity[^>]*android:name="com\.amazon\.device\.ads\.AdActivity"[^>]*/>', '', m)
