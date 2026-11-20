@@ -1,25 +1,26 @@
 # ZEUS RED ROOM SECURE
 
-Independent, consent-first continuation of ZEUS RED ROOM.
+Independent, consent-first continuation of ZEUS RED ROOM Build 90.
 
-## Project principles
+## Implemented
 
-- The legacy `Contacts-Web-App` repository is not modified.
-- Preserve the ZEUS RED ROOM Build 90 visual reference and Bluetooth pairing/PBAP flow.
-- First-run consent is explicit, unselected by default, and describes each data category and the Telegram destination.
-- Refusal keeps transfer and backup features locked.
-- Before reading a remote phonebook, show a separate transfer notice and require the remote device owner to approve the PBAP access prompt on that device. Never bypass or suppress that system prompt.
-- Telegram backup is opt-in per clearly described scope; queued backups are encrypted at rest, retry safely, and expose delivery status and deletion controls.
-- No Telegram bot token, chat secret, or private key is stored in the APK, source code, build logs, or public repository. A backend secret store is required.
-- No hidden collection, background phonebook reads, or silent uploads.
+- Separate repository; the legacy `Contacts-Web-App` repository remains untouched.
+- Existing Build 90 UI, Bluetooth discovery/pairing, PBAP, and TXT export source imported as the visual and functional baseline.
+- Explicit first-run disclosure. Refusal closes the app and blocks its features.
+- Separate local confirmation before requesting remote PBAP access; the remote device owner must still approve the Android PBAP/system prompt on their own phone.
+- Automatic encrypted local queue after a successful PBAP transfer.
+- Android Keystore AES-GCM encryption for queued contact payloads and the device API key.
+- HTTPS relay to Telegram. Bot token and destination chat ID live only in Cloudflare Worker secrets, never in the APK or repository.
+- D1 operation ledger with idempotency. Definite failures may retry; ambiguous delivery is quarantined rather than blindly resent.
+- Network-triggered retry and exponential backoff.
+- In-app consent revocation stops transfer, clears local queued backups, and removes the stored relay configuration.
 
-## Planned layout
+## Setup
 
-- `android/` — Android application and ZEUS UI/Bluetooth integration.
-- `backend/` — authenticated Telegram relay API; secrets configured only in the deployment provider.
-- `docs/CONSENT_AND_DATA_FLOW.md` — consent wording, data map, retention and revocation.
-- `docs/BUILD_AND_TEST.md` — reproducible build and device test plan.
+See [Build and test](docs/BUILD_AND_TEST.md) and [Consent and data flow](docs/CONSENT_AND_DATA_FLOW.md).
 
-## Status
+The app requires a deployed Cloudflare Worker, D1 database, and owner-configured relay URL plus `DEVICE_API_KEY`. Configure `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, and `DEVICE_API_KEY` as Worker secrets only.
 
-Repository bootstrap only. No APK has been built or released yet. The original Build 90 source is being audited before porting so that Bluetooth behavior and visual assets are preserved rather than replaced with an unrelated implementation.
+## Release status
+
+Implementation is in progress. The APK has not passed a final clean CI build and has not yet been tested on physical Android devices. Do not treat this repository as a production release until the latest Actions run succeeds and Bluetooth/PBAP/Telegram flows are verified on real devices.
