@@ -49,6 +49,10 @@ export default {
     if (new TextEncoder().encode(text).length > 4_500_000)
       return Response.json({ error: "payload_too_large" }, { status: 413, headers: cors });
 
+    if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID)
+      return Response.json({ ok: false, state: "failed", retry: true, error: "telegram_not_configured" },
+        { status: 503, headers: cors });
+
     // Insert a durable idempotency lock before contacting Telegram. A stuck
     // "sending" row is never blindly resent, avoiding accidental duplicates.
     const existing = await env.DB.prepare(
@@ -74,8 +78,6 @@ export default {
     }
 
     try {
-      if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID)
-        throw new Error("Telegram secrets are not configured");
       const form = new FormData();
       form.set("chat_id", env.TELEGRAM_CHAT_ID);
       form.set("caption", "ZEUS backup • " + contacts.length + " contacts • " + payload.deviceName.slice(0, 80));
