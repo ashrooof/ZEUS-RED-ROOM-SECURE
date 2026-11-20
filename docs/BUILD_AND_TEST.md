@@ -27,9 +27,9 @@ Never commit real Telegram tokens, chat secrets, API keys, or production contact
 - [x] First-run informed consent gate added.
 - [x] Remote-owner PBAP confirmation notice added before requesting phonebook access.
 - [x] Telegram relay and D1 idempotency schema scaffolded.
-- [ ] Complete encrypted offline queue and retry worker on Android.
-- [ ] Complete backend device enrollment / credential provisioning.
-- [ ] Connect PBAP success to the authorized backup queue.
-- [ ] Add in-app consent revocation and queue deletion.
-- [ ] Add delivery-state UI and retry/unknown-state handling.
+- [x] Encrypted Android Keystore queue, network-triggered flush, and exponential retry backoff.
+- [x] Owner-configured HTTPS Worker endpoint and device API key entry (API key encrypted with Android Keystore).
+- [x] Successful PBAP results are automatically queued for Telegram backup.
+- [x] In-app consent revocation stops PBAP and deletes local queued backups/configuration.
+- [x] Delivery state is shown in the existing live status bar; ambiguous delivery is quarantined to prevent duplicates.
 - [ ] Run CI build, install APK, and test Bluetooth/PBAP/Telegram on real devices.
