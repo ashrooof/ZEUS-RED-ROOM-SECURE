@@ -419,9 +419,9 @@ public final class ZEUSWebUI {
                 .setMessage("سحب الموافقة سيوقف استخدام وظائف ZEUS على هذا الهاتف. أي نسخة سبق إرسالها إلى Telegram لا يمكن للتطبيق استرجاعها أو حذفها من المحادثة.")
                 .setCancelable(true)
                 .setPositiveButton("سحب الموافقة وإغلاق التطبيق", (dialog, which) -> {
+                    ZEUSConsent.revoke(activity);
                     ZEUSPBAP.cancel();
                     ZEUSBackupClient.clearQueue(activity);
-                    ZEUSConsent.revoke(activity);
                     activity.finish();
                 })
                 .setNegativeButton("إلغاء", null)
