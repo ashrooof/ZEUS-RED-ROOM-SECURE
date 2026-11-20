@@ -109,7 +109,8 @@ public final class ZEUSBackupClient {
     }
 
     public static void enqueue(Context context, String deviceName, String contactsJson) {
-        if (context == null || contactsJson == null || contactsJson.trim().isEmpty()) return;
+        if (context == null || !hasActiveConsent(context) ||
+            contactsJson == null || contactsJson.trim().isEmpty()) return;
         try {
             JSONObject payload = new JSONObject();
             payload.put("consentVersion", 1);
@@ -150,10 +151,11 @@ public final class ZEUSBackupClient {
     }
 
     public static void flush(Context context) {
-        if (context == null) return;
+        if (context == null || !hasActiveConsent(context)) return;
         final Context app = context.getApplicationContext();
         if (System.currentTimeMillis() < nextAttemptAt) return;
         IO.execute(() -> {
+            if (!hasActiveConsent(app)) return;
             String endpoint = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("endpoint", "");
             String apiKey = readApiKey(app);
             if (!validEndpoint(endpoint) || apiKey == null || apiKey.isEmpty()) return;
@@ -161,6 +163,7 @@ public final class ZEUSBackupClient {
             File[] files = dir.listFiles((d, name) -> name.endsWith(".queue"));
             if (files == null || files.length == 0) return;
             for (File file : files) {
+                if (!hasActiveConsent(app)) return;
                 HttpsURLConnection connection = null;
                 try {
                     byte[] encrypted = readAll(file);
@@ -238,6 +241,11 @@ public final class ZEUSBackupClient {
                 MAIN.post(retry);
             }
         } catch (Exception ignored) {}
+    }
+
+    private static boolean hasActiveConsent(Context context) {
+        SharedPreferences consent = context.getSharedPreferences("zeus_privacy_consent", Context.MODE_PRIVATE);
+        return consent.getInt("version", 0) == 1 && consent.getBoolean("accepted", false);
     }
 
     private static File queueDir(Context c) { return new File(c.getFilesDir(), "zeus-backup-queue"); }
