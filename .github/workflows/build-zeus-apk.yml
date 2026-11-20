@@ -1,0 +1,133 @@
+name: Build ZEUS RED ROOM APK
+
+on:
+  push:
+    branches: [zeus-red-room]
+    paths:
+      - 'build/fonts/**'
+      - 'build/patch_red_room.py'
+      - 'build/ZEUSBluetooth.java'
+      - 'build/ZEUSLightning.java'
+      - 'build/ZEUSWebUI.java'
+      - 'build/ZEUSPBAP.java'
+      - 'build/ZEUSExport.java'
+      - 'build/interface.html'
+      - '.github/workflows/build-zeus-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Unpack user-supplied font files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "build/fonts/ZEUS-RED-ROOM-FONTS.zip"
+          unzip -o "build/fonts/ZEUS-RED-ROOM-FONTS.zip" -d build/fonts
+          test -s "build/fonts/zain.ttf"
+          test -s "build/fonts/sf_sultan.ttf"
+
+      - name: Validate source assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "original/ASHRAF BASHA_1.4.apk"
+          test -s "build/ZEUSExport.java"
+          test -s "build/ZEUSBluetooth.java"
+          test -s "build/ZEUSLightning.java"
+          test -s "build/ZEUSWebUI.java"
+          test -s "build/ZEUSPBAP.java"
+          test -s "build/interface.html"
+          test -s "build/patch_apk.py"
+          test -s "build/patch_red_room.py"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android build tools and Apktool
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+          sdkmanager --licenses </dev/null >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          curl -fL https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar -o apktool.jar
+
+      - name: Decode and patch original APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -jar apktool.jar d -f "original/ASHRAF BASHA_1.4.apk" -o decoded
+          python3 build/patch_apk.py decoded
+          python3 build/patch_red_room.py decoded
+          mkdir -p classes dex-out
+          javac -source 8 -target 8 -classpath "$ANDROID_HOME/platforms/android-35/android.jar" -d classes build/ZEUSExport.java build/ZEUSBluetooth.java build/ZEUSLightning.java build/ZEUSWebUI.java build/ZEUSPBAP.java
+          mapfile -t CLASS_FILES < <(find classes -name '*.class' -print)
+          "$ANDROID_HOME/build-tools/35.0.0/d8" --lib "$ANDROID_HOME/platforms/android-35/android.jar" --min-api 21 --output dex-out "${CLASS_FILES[@]}"
+          cp dex-out/classes.dex classes2.dex
+          java -jar apktool.jar b decoded -o zeus-unsigned.apk
+          zip -q zeus-unsigned.apk classes2.dex
+          unzip -t zeus-unsigned.apk >/dev/null
+
+      - name: Upload decoded app sources for Bluetooth and UI audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZEUS-DECODED-AUDIT
+          path: |
+            decoded/smali/grant/bt/contact/transfer/
+            decoded/res/layout/
+            decoded/res/drawable/
+            decoded/res/values/
+            decoded/AndroidManifest.xml
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Align and sign APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 zeus-unsigned.apk zeus-aligned.apk
+          keytool -genkeypair -v -keystore zeus-test-key.jks -alias zeus -keyalg RSA -keysize 2048 -validity 10000 -storepass zeus-test-only -keypass zeus-test-only -dname "CN=ZEUS RED ROOM,O=ZEUS,C=EG"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks zeus-test-key.jks --ks-key-alias zeus --ks-pass pass:zeus-test-only --key-pass pass:zeus-test-only --out ZEUS-RED-ROOM.apk zeus-aligned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose ZEUS-RED-ROOM.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging ZEUS-RED-ROOM.apk > apk-badging.txt 2> aapt-diagnostics.txt || true
+          java -jar apktool.jar d -f ZEUS-RED-ROOM.apk -o verify-apk >/dev/null
+          grep -q 'package="hack.aaashraf.zeus"' verify-apk/AndroidManifest.xml
+          grep -q "package: name='hack.aaashraf.zeus'" apk-badging.txt
+          unzip -t ZEUS-RED-ROOM.apk >/dev/null
+          unzip -Z1 ZEUS-RED-ROOM.apk | grep -E '^classes(2)?\.dex$' | tee dex-files.txt
+          sha256sum ZEUS-RED-ROOM.apk > apk-sha256.txt
+
+      - name: Upload signed APK and verification report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZEUS-RED-ROOM-APK
+          path: |
+            ZEUS-RED-ROOM.apk
+            apk-badging.txt
+            aapt-diagnostics.txt
+            dex-files.txt
+            apk-sha256.txt
+            verify-apk/AndroidManifest.xml
+          if-no-files-found: error
+          retention-days: 30
+
+# Rebuild after correcting the local ZEUS Interface asset injection.
+# Rebuild after Android 12+ Nearby devices permission validation fix.
+
+# Rebuild after adding one-tap save-all contacts TXT export.
+
+# Rebuild after hardening native device-named TXT export to Downloads.
+
+# Rebuild after live status, SVG controls, local contacts log and Cairo clock polish.
