@@ -48,6 +48,8 @@ public final class ZEUSBackupClient {
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private static volatile String lastStatus = "لم يتم إرسال نسخة بعد.";
     private static volatile boolean watching = false;
+    private static volatile long retryDelayMs = 30000L;
+    private static volatile long nextAttemptAt = 0L;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     private ZEUSBackupClient() {}
@@ -150,6 +152,7 @@ public final class ZEUSBackupClient {
     public static void flush(Context context) {
         if (context == null) return;
         final Context app = context.getApplicationContext();
+        if (System.currentTimeMillis() < nextAttemptAt) return;
         IO.execute(() -> {
             String endpoint = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("endpoint", "");
             String apiKey = readApiKey(app);
@@ -180,24 +183,38 @@ public final class ZEUSBackupClient {
                     JSONObject result = new JSONObject(response);
                     if (result.optBoolean("ok") && "delivered".equals(result.optString("state"))) {
                         file.delete();
+                        retryDelayMs = 30000L;
+                        nextAttemptAt = 0L;
                         lastStatus = "تم إرسال النسخة الاحتياطية إلى Telegram بنجاح.";
                     } else if (status == 409 || "unknown".equals(result.optString("state")) ||
                                "sending_or_unknown".equals(result.optString("state"))) {
                         File uncertain = new File(file.getParentFile(), operationId + ".unknown");
                         file.renameTo(uncertain);
                         lastStatus = "حالة إرسال غير مؤكدة؛ تم إيقاف إعادة المحاولة لتجنب تكرار النسخة.";
+                    } else if ("failed".equals(result.optString("state")) && result.optBoolean("retry")) {
+                        lastStatus = "تعذّر التسليم مؤقتًا؛ ستُعاد المحاولة تلقائيًا.";
+                        scheduleRetry(app);
+                        break;
                     } else if (status == 401) {
                         lastStatus = "مفتاح الربط مرفوض؛ راجع إعدادات النسخ الاحتياطي.";
                         break;
                     }
                 } catch (Exception networkOrStorageError) {
-                    lastStatus = "لا يوجد تأكيد تسليم بعد؛ النسخة محفوظة مشفّرة وستُعاد المحاولة عند عودة الاتصال.";
+                    lastStatus = "لا يوجد تأكيد تسليم بعد؛ النسخة محفوظة مشفّرة وستُعاد المحاولة تلقائيًا.";
+                    scheduleRetry(app);
                     break;
                 } finally {
                     if (connection != null) connection.disconnect();
                 }
             }
         });
+    }
+
+    private static synchronized void scheduleRetry(Context context) {
+        long delay = retryDelayMs;
+        nextAttemptAt = System.currentTimeMillis() + delay;
+        retryDelayMs = Math.min(retryDelayMs * 2L, 900000L);
+        MAIN.postDelayed(() -> flush(context), delay);
     }
 
     private static void watchNetwork(Context context) {
