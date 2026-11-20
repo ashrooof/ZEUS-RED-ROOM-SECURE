@@ -8,17 +8,17 @@ activity = root / 'smali/grant/bt/contact/transfer/SharedContactsActivity.smali'
 strings = root / 'res/values/strings.xml'
 apktool_meta = root / 'apktool.yml'
 meta_text = apktool_meta.read_text(encoding='utf-8')
-meta_text = meta_text.replace('renameManifestPackage: hack.aaashraf', 'renameManifestPackage: hack.aaashraf.zeus')
+meta_text = meta_text.replace('renameManifestPackage: hack.aaashraf.zeus.secure', 'renameManifestPackage: hack.aaashraf.zeus')
 apktool_meta.write_text(meta_text, encoding='utf-8')
 
 manifest = root / 'AndroidManifest.xml'
 manifest_text = manifest.read_text(encoding='utf-8')
-manifest_text, changed = re.subn(r'(<manifest\b[^>]*\bpackage=")[^"]*(")', r'\1hack.aaashraf.zeus\2', manifest_text, count=1)
+manifest_text, changed = re.subn(r'(<manifest\b[^>]*\bpackage=")[^"]*(")', r'\1hack.aaashraf.zeus.secure\2', manifest_text, count=1)
 if changed != 1:
     raise SystemExit('Could not restore the original Android package identifier')
 manifest.write_text(manifest_text, encoding='utf-8')
 manifest_text = re.sub(r'android:icon="[^"]+"', 'android:icon="@drawable/zeus_icon"', manifest_text, count=1)
-manifest_text = manifest_text.replace('hack.aaashraf.mobileadsinitprovider', 'hack.aaashraf.zeus.mobileadsinitprovider')
+manifest_text = manifest_text.replace('hack.aaashraf.mobileadsinitprovider', 'hack.aaashraf.zeus.secure.mobileadsinitprovider')
 manifest.write_text(manifest_text, encoding='utf-8')
 icon_source = root / 'res/drawable-mdpi/ic_launcher.png'
 icon_target = root / 'res/drawable/zeus_icon.png'
