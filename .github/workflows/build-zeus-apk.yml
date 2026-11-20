@@ -12,7 +12,7 @@ on:
       - 'build/ZEUSPBAP.java'
       - 'build/ZEUSExport.java'
       - 'build/ZEUSConsent.java'
-      - 'build/ZEUSConsent.java'
+      - 'build/ZEUSBackupClient.java'
       - 'build/interface.html'
       - '.github/workflows/build-zeus-apk.yml'
   workflow_dispatch:
