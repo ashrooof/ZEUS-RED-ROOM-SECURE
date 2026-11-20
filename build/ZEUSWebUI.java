@@ -52,6 +52,11 @@ public final class ZEUSWebUI {
 
     public static void attach(Activity activity) {
         if (activity == null || Build.VERSION.SDK_INT < 17) return;
+        ZEUSConsent.require(activity, () -> attachAuthorized(activity));
+    }
+
+    private static void attachAuthorized(Activity activity) {
+        if (activity == null || Build.VERSION.SDK_INT < 17) return;
         View content = activity.findViewById(android.R.id.content);
         if (!(content instanceof ViewGroup)) return;
         ViewGroup root = (ViewGroup) content;
