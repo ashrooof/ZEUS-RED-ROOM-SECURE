@@ -6,6 +6,7 @@ on:
     paths:
       - 'build/fonts/**'
       - 'build/patch_red_room.py'
+      - 'build/patch_apk.py'
       - 'build/ZEUSBluetooth.java'
       - 'build/ZEUSLightning.java'
       - 'build/ZEUSWebUI.java'
