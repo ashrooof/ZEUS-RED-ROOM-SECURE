@@ -354,7 +354,8 @@ function pollBridge(){
  if(info&&info.state){
   if(info.state==='pairing'){if(view!=='transfer'||lastTransferState!==info.state)showTransfer('pairing',info.message);lastTransferState=info.state}
   else if(info.state==='connecting'||info.state==='transferring'){if(view!=='transfer'||lastTransferState!==info.state)showTransfer(info.state,info.message);else{const p=sheet.querySelector('.pwrap div');if(p&&info.message)p.textContent=info.message;status('wait',info.message||'جارٍ نقل جهات الاتصال...')}lastTransferState=info.state}
-  else if(info.state==='done'&&view!=='contacts'){lastTransferState='done';renderContacts(getContacts())}
+  else if(info.state==='done'&&view!=='contacts'){lastTransferState='done';renderContacts(getContacts());if(info.backupMessage)status('ok',info.backupMessage)}
+  else if(info.state==='done'&&view==='contacts'&&info.backupMessage){status('ok',info.backupMessage)}
   else if(info.state==='error'&&view!=='error'){view='error';lastTransferState='error';show(head('تعذّر نقل جهات الاتصال','alert')+'<div class="nearby-empty">'+safe(info.message||'الجهاز لم يسمح بالوصول إلى دفتر الهاتف.')+'</div><div class="acts"><button data-a="back">'+IC.radar+'العودة للأجهزة</button></div>');status('error',info.message||'تعذّر استلام جهات الاتصال.')}
  }
  if(view==='devices')renderDevices(false);
