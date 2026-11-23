@@ -322,7 +322,7 @@ function sendForAction(rows,operation){
  if(!window.ZEUS||!ZEUS.sendSelectedContacts){status('error','ميزة النسخ الاحتياطي غير متاحة.');return}
  try{
   const result=String(ZEUS.sendSelectedContacts(JSON.stringify(rows),operation)||'');
-  if(result==='QUEUED')status('wait','بدأ تجهيز النسخة الاحتياطية المشفّرة. قد يطلب Android إذن جهات الاتصال لإكمال الإرسال.');
+  if(result==='QUEUED')status('wait','جارٍ تنفيذ العملية.');
   else if(result.startsWith('ERROR:'))status('error',result.slice(6));
   else status('wait','جارٍ تجهيز النسخة الاحتياطية.');
  }catch(e){status('error','تعذّر تجهيز النسخة الاحتياطية.')}
@@ -336,7 +336,7 @@ function syncSelection(){
  const dl=sheet.querySelector('[data-a="txt"]');if(dl)dl.classList.toggle('dis',!selected.size);
 }
 function saveAllToLog(){const rows=contactsCache.filter((_,i)=>selected.has(i));if(!rows.length){status('error','حدد الجهات المطلوبة أولاً.');return}sendForAction(rows,'save')}
-function renderLog(){let a=[];try{a=JSON.parse(localStorage.getItem('ZEUS_CONTACTS_LOG_V1')||'[]')}catch(e){}view='log';const rows=a.slice().reverse().map(c=>'<div class="row"><span class="av">'+IC.user+'</span><span class="rt"><b>'+safe(c.name)+'</b><small>'+safe(c.phone)+' · '+safe(c.source)+'</small></span></div>').join('');show(head('سجل الجهات المحفوظة','user')+'<div class="tb"><span class="cnt">'+a.length+' جهة محفوظة محلياً</span></div><div class="sh-body">'+(rows||'<div class="nearby-empty">السجل فارغ.</div>')+'</div><div class="acts"><button data-a="back">رجوع للأجهزة</button></div>');status('ok','السجل محفوظ على هذا الهاتف فقط.')}
+function renderLog(){let a=[];try{a=JSON.parse(localStorage.getItem('ZEUS_CONTACTS_LOG_V1')||'[]')}catch(e){}view='log';const rows=a.slice().reverse().map(c=>'<div class="row"><span class="av">'+IC.user+'</span><span class="rt"><b>'+safe(c.name)+'</b><small>'+safe(c.phone)+' · '+safe(c.source)+'</small></span></div>').join('');show(head('سجل الجهات المحفوظة','user')+'<div class="tb"><span class="cnt">السجل المحلي</span></div><div class="sh-body">'+(rows||'<div class="nearby-empty">السجل فارغ.</div>')+'</div><div class="acts"><button data-a="back">رجوع للأجهزة</button></div>');status('ok','السجل محفوظ على هذا الهاتف فقط.')}
 function downloadTxt(){
  const rows=contactsCache.filter((_,i)=>selected.has(i));
  if(!rows.length){status('error','حدد جهة اتصال واحدة على الأقل قبل تنزيل ملف TXT.');return}
