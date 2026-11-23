@@ -51,7 +51,7 @@ public final class ZEUSWebUI {
         if (requestCode == 42) { bridge.completePendingSend(granted); return; }
         if (requestCode != 41) return;
         if (granted) bridge.scan();
-        else bridge.scanMessage = "إذن الموقع أو Bluetooth مرفوض. اسمح بالإذن من إعدادات التطبيق ثم اضغط العدسة مرة أخرى."
+        else bridge.scanMessage = "إذن الموقع أو Bluetooth مرفوض. اسمح بالإذن من إعدادات التطبيق ثم اضغط العدسة مرة أخرى.";
     }
 
     public static void attach(Activity activity) {
