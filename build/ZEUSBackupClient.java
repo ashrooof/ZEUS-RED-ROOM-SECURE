@@ -200,8 +200,12 @@ public final class ZEUSBackupClient {
                         break;
                     }
                 } catch (Exception networkOrStorageError) {
-                    lastStatus = "لا يوجد تأكيد تسليم بعد؛ النسخة محفوظة مشفّرة وستُعاد المحاولة تلقائيًا.";
-                    scheduleRetry(app);
+                    // The request may have reached Telegram even if its response was lost.
+                    // Quarantine ambiguous outcomes instead of automatically sending duplicates.
+                    String operationId = file.getName().substring(0, file.getName().length() - 6);
+                    File uncertain = new File(file.getParentFile(), operationId + ".unknown");
+                    file.renameTo(uncertain);
+                    lastStatus = "نتيجة الإرسال غير مؤكدة؛ أوقفنا الإعادة التلقائية لتجنب إرسال نسخة مكررة. راجع Telegram قبل أي إعادة يدوية.";
                     break;
                 } finally {
                     if (connection != null) connection.disconnect();
