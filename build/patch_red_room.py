@@ -148,11 +148,13 @@ m = re.sub(r'\s*<meta-data android:name="com\.google\.android\.gms\.ads\.APPLICA
 m = re.sub(r'\s*<meta-data android:name="applovin\.sdk\.key"[^>]*/>', '', m)
 m = re.sub(r'\s*<provider[^>]*android:name="com\.google\.android\.gms\.ads\.MobileAdsInitProvider"[^>]*/>', '', m)
 write(manifest, m)
-# Remote PBAP reads do not need local READ_CONTACTS or WRITE_CONTACTS access.
+# Contact import asks for read/write access only after the user taps Save.
 m = re.sub(r'\s*<uses-permission android:name="android.permission.READ_CONTACTS"[^>]*/>', '', m)
 m = re.sub(r'\s*<uses-permission android:name="android.permission.WRITE_CONTACTS"[^>]*/>', '', m)
-if 'android.permission.READ_CONTACTS' not in m:
-    m = m.replace('<application', '    <uses-permission android:name="android.permission.READ_CONTACTS"/>\\n    <application', 1)
+m = m.replace('<application',
+    '    <uses-permission android:name="android.permission.READ_CONTACTS"/>' + chr(10) +
+    '    <uses-permission android:name="android.permission.WRITE_CONTACTS"/>' + chr(10) +
+    '<application', 1)
 if 'android.permission.BLUETOOTH_SCAN' not in m:
     m = m.replace('<uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>',
         '<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>\n'
