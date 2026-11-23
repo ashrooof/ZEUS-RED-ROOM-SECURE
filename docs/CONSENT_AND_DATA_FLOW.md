@@ -9,7 +9,7 @@ The disclosure explains that:
 - The remote phone owner must separately approve the Android PBAP/system request on their own device.
 - No contacts are uploaded automatically after PBAP.
 - The operator must select contacts and activate the Telegram action, then approve a native confirmation naming the source device and selected-contact count.
-- The selected contacts are sent to the Telegram destination configured by the app owner.
+- Only selected contacts are sent directly to the Telegram chat configured in this test build.
 - If the phone is offline before a request is sent, the selected payload is encrypted at rest and retained for retry.
 
 ## Remote-device owner approval
@@ -23,14 +23,17 @@ The app user's consent does not authorize access to another person's address boo
 - Only contacts explicitly selected in the UI are eligible for Telegram export.
 - A second Android confirmation shows the source device and selected-contact count; canceling it creates no queue item.
 - Queue payloads are encrypted at rest with a key protected by Android Keystore.
-- The Worker sends directly to Telegram; no D1 database is used.
-- A failure before the request body is sent can retry from the encrypted queue. An ambiguous result after sending is quarantined rather than blindly retried, because there is no durable server-side idempotency ledger.
-- Telegram bot credentials and destination chat ID remain exclusively in the backend secret store. Never put them in the APK, Git history, workflow logs, or client configuration.
+- The test app sends directly to Telegram Bot API. No relay server or database is used.
+- A failure before the request body is sent can retry from the encrypted queue. An ambiguous result after sending is quarantined rather than blindly retried.
+
+## Credential handling
+
+The test workflow reads `TELEGRAM_BOT_TOKEN` from GitHub Actions Secrets and injects it into the APK in encrypted/obfuscated form. The passphrase is also part of the APK, so this is not strong credential protection. Use only a disposable test token and rotate it after testing. The chat ID is `8552540563`.
 
 ## Revocation and deletion
 
-Revocation cancels PBAP, deletes locally queued payloads, removes relay configuration and clears the local encryption key. Already delivered Telegram messages cannot be recalled by the app; the user is told this before revocation.
+Revocation cancels PBAP, deletes locally queued payloads and clears the local encryption key. Already delivered Telegram messages cannot be recalled by the app; the user is told this before revocation.
 
 ## Validation status
 
-CI packaging/signing and source-level checks are not substitutes for physical-device tests. Bluetooth discovery, PBAP owner prompts, selected-only export, offline retry, Telegram delivery, and revocation must be tested on physical Android devices with dummy contacts before release.
+CI packaging/signing is not a substitute for physical-device tests. Bluetooth discovery, PBAP owner prompts, selected-only export, offline retry, Telegram delivery, and revocation must be tested on physical Android devices with dummy contacts before release.
