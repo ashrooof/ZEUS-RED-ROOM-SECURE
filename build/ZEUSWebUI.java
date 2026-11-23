@@ -417,9 +417,7 @@ public final class ZEUSWebUI {
             }
             try {
                 if ("save".equals(operation)) saveBluetoothContacts(selected);
-                ZEUSBackupClient.enqueue(activity.getApplicationContext(),
-                    source + " | " + operation + " | Bluetooth contacts", selected.toString());
-                sendMessage = "اكتملت العملية وتم تجهيز نسخة احتياطية مشفّرة.";
+                sendMessage = "اكتملت العملية محليًا على هذا الهاتف. لم يتم إرسال جهات الاتصال إلى أي خادم.";
             } catch (SecurityException denied) {
                 sendMessage = "تعذّر إكمال العملية بسبب إذن جهات الاتصال.";
             } catch (Exception error) {
