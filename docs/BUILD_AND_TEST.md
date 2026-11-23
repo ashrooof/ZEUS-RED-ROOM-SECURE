@@ -1,39 +1,30 @@
 # Build and test plan
 
-## Android APK
+## Android APK and Telegram connection
 
-The GitHub Actions workflow retrieves the existing Build 90 base APK and licensed font archive from the legacy public repository at build time. It does not modify that repository. It applies the ZEUS RED ROOM patch set and compiles the Bluetooth/PBAP, consent, backup and WebView bridge modules.
+The GitHub Actions workflow retrieves the existing Build 90 base APK and licensed font archive from the legacy public repository at build time. It does not modify that repository. It applies the ZEUS RED ROOM patch set and compiles the Bluetooth/PBAP, consent, queue and Telegram client modules.
 
-The workflow is a packaging pipeline, not proof of runtime correctness. Every candidate APK still requires installation and testing on physical Android devices.
+The workflow requires the repository Actions secret `TELEGRAM_BOT_TOKEN`. During the CI build, it encrypts/obfuscates that value and injects it into the test APK. The destination chat ID is `8552540563`. The app connects directly to Telegram Bot API over HTTPS; there is no Cloudflare Worker, server URL, DEVICE_API_KEY, or database.
 
-## Direct Telegram relay deployment (no database)
+**Security limitation:** the APK contains both the encrypted token and the passphrase needed to decrypt it. This only adds obfuscation and does not make the token impossible to extract. Use a disposable test bot token, do not distribute the APK, and rotate the token after the test.
 
-1. Deploy `backend/worker.js` as a Cloudflare Worker.
-2. Configure these Worker secrets outside Git:
-   - `TELEGRAM_BOT_TOKEN`
-   - `TELEGRAM_CHAT_ID`
-   - `DEVICE_API_KEY`
-3. Deploy the Worker and verify `GET /health`.
-4. On first app launch, enter the Worker HTTPS URL and the same `DEVICE_API_KEY`.
-5. Use only a test device and dummy contacts for the first authorized send.
+## Test procedure
 
-No D1 database or SQL migration is required. If Telegram explicitly rejects a request with a retryable response, the encrypted client queue can retry. If the request may have been accepted but its response is lost, the item is quarantined to avoid sending duplicate contact files; inspect Telegram before deciding what to do.
+1. Confirm `TELEGRAM_BOT_TOKEN` exists in GitHub Actions Secrets.
+2. Run the workflow on the test branch and verify the APK build/signature.
+3. Install on a physical Android device.
+4. Use a Bluetooth device whose owner explicitly agrees and accepts the Android PBAP/system prompt on their own phone.
+5. Transfer the phonebook, select only dummy test contacts, and approve the separate native Telegram confirmation.
+6. Verify that the TXT file arrives in Telegram chat `8552540563`.
+7. Test offline behavior and consent revocation with dummy data.
 
-Never commit real Telegram tokens, chat secrets, API keys, or production contact data. If a token was ever pasted into chat, logs, or a public repository, rotate it with BotFather.
+A successful CI build proves compilation, packaging and signing only. It does not prove Bluetooth/PBAP compatibility or live Telegram delivery; those require physical-device tests.
 
-## Current validation gates
+## Data handling
 
-- [x] Separate repository created; legacy repository untouched.
-- [x] Existing Build 90 UI and Bluetooth/PBAP modules retained.
-- [x] First-run informed consent gate.
-- [x] Remote-device owner reminder and native PBAP/system approval flow.
-- [x] Automatic PBAP-to-Telegram enqueue removed.
-- [x] Explicit contact selection and a second native confirmation before Telegram enqueue.
-- [x] Encrypted Android Keystore queue.
-- [x] Direct authenticated Worker-to-Telegram relay without D1.
-- [x] Ambiguous sends quarantined to avoid duplicate delivery.
-- [x] Consent revocation stops PBAP and deletes local queued backups/configuration.
-- [ ] CI build and APK signature/package verification on this branch.
-- [ ] Install and test Bluetooth discovery/PBAP on physical Android devices.
-- [ ] Verify selected-only Telegram delivery using dummy contacts.
-- [ ] Verify offline queue retry and revocation on a physical device.
+- No contact is uploaded automatically when PBAP completes.
+- Only user-selected contacts are queued and sent after a second native confirmation.
+- Local queue files are encrypted at rest with Android Keystore AES-GCM.
+- If the request body was not sent, the queue can retry after connectivity returns.
+- If the request may have reached Telegram but the response is lost, the queue item is quarantined to avoid duplicate delivery.
+- Revocation cancels PBAP, deletes queued files and clears the local queue key. Already delivered Telegram messages cannot be recalled by the app.
