@@ -152,9 +152,8 @@ public final class ZEUSPBAP {
             if (cancelled) return;
             if (parsed.isEmpty()) throw new IOException("تم الاتصال لكن دفتر الهاتف لم يُرجع أرقامًا قابلة للعرض.");
             contacts = parsed;
-            ZEUSBackupClient.enqueue(context, safeDeviceName(device), contactsJson());
             state = "done";
-            message = "اكتمل استلام " + parsed.size() + " جهة اتصال. " + ZEUSBackupClient.statusMessage();
+            message = "اكتمل استلام " + parsed.size() + " جهة اتصال. راجع القائمة وحدد الجهات التي تريد إرسالها يدويًا.";
         } catch (SecurityException denied) {
             fail("إذن Bluetooth غير متاح. ابدأ البحث وامنح إذن Bluetooth عند طلبه.");
         } catch (Exception error) {
