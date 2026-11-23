@@ -381,7 +381,7 @@ public final class ZEUSWebUI {
             activity.runOnUiThread(() -> new AlertDialog.Builder(activity)
                 .setTitle("تأكيد الإرسال إلى Telegram")
                 .setMessage("سيتم إرسال " + selected.length() + " جهة اتصال محددة من جهاز " + source +
-                    " إلى حساب Telegram المضبوط في الخادم. لن تُرسل الجهات غير المحددة. هل تريد المتابعة؟")
+                    " إلى حساب Telegram المرتبط بنسخة الاختبار. لن تُرسل الجهات غير المحددة. هل تريد المتابعة؟")
                 .setCancelable(true)
                 .setPositiveButton("إرسال المحدد الآن", (dialog, which) ->
                     ZEUSBackupClient.enqueue(activity.getApplicationContext(), source, payload))
