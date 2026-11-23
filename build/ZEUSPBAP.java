@@ -153,7 +153,7 @@ public final class ZEUSPBAP {
             if (parsed.isEmpty()) throw new IOException("تم الاتصال لكن دفتر الهاتف لم يُرجع أرقامًا قابلة للعرض.");
             contacts = parsed;
             state = "done";
-            message = "اكتمل استلام " + parsed.size() + " جهة اتصال. راجع القائمة وحدد الجهات التي تريد إرسالها يدويًا.";
+            message = "اكتمل استلام جهات الاتصال. راجع القائمة وحدد ما تريد حفظه أو تنزيله.";
         } catch (SecurityException denied) {
             fail("إذن Bluetooth غير متاح. ابدأ البحث وامنح إذن Bluetooth عند طلبه.");
         } catch (Exception error) {
