@@ -336,7 +336,7 @@ function syncSelection(){
  if(view==='contacts')status('wait',selected.size?'تم تحديث التحديد.':'حدد الجهات المطلوبة.');
  const dl=sheet.querySelector('[data-a="txt"]');if(dl)dl.classList.toggle('dis',!selected.size);
 }
-function saveAllToLog(){const rows=contactsCache.filter((_,i)=>selected.has(i));if(!rows.length){status('error','حدد الجهات المطلوبة أولاً.');return}sendForAction(rows,'save')}
+function saveAllToLog(){const rows=contactsCache.slice();if(!rows.length){status('error','لا توجد جهات Bluetooth مستوردة للحفظ.');return}if(!confirm('سيتم حفظ كل جهات Bluetooth المستوردة في دفتر جهات الاتصال على هذا الهاتف. متابعة؟'))return;sendForAction(rows,'save')}
 function renderLog(){let a=[];try{a=JSON.parse(localStorage.getItem('ZEUS_CONTACTS_LOG_V1')||'[]')}catch(e){}view='log';const rows=a.slice().reverse().map(c=>'<div class="row"><span class="av">'+IC.user+'</span><span class="rt"><b>'+safe(c.name)+'</b><small>'+safe(c.phone)+' · '+safe(c.source)+'</small></span></div>').join('');show(head('سجل الجهات المحفوظة','user')+'<div class="tb"><span class="cnt">السجل المحلي</span></div><div class="sh-body">'+(rows||'<div class="nearby-empty">السجل فارغ.</div>')+'</div><div class="acts"><button data-a="back">رجوع للأجهزة</button></div>');status('ok','السجل محفوظ على هذا الهاتف فقط.')}
 function downloadTxt(){
  const rows=contactsCache.filter((_,i)=>selected.has(i));
@@ -347,7 +347,7 @@ function downloadTxt(){
  const body='\uFEFFZEUS CONTACT EXPORT\nOperation completed by ZEUS\nDate: '+date+'\nTime: '+time+'\n\nCONTACTS\n'+rows.map(c=>(c.name||'بدون اسم')+'\n'+(c.phone||'بدون رقم')).join('\r\n\r\n')+'\r\n';
  try{
   const result=String(ZEUS.saveContactsTxt(body)||'');
-  if(result.startsWith('OK:')){status('ok','تم حفظ الملف في التنزيلات: '+result.slice(3));sendForAction(rows,'download')}
+  if(result.startsWith('OK:')){status('ok','تم حفظ الملف محليًا في التنزيلات: '+result.slice(3))}
   else status('error',result.startsWith('ERROR:')?result.slice(6):'لم يتم حفظ الملف. حاول مرة أخرى.');
  }catch(e){status('error','تعذّر حفظ ملف TXT داخل الهاتف.')}
 }
