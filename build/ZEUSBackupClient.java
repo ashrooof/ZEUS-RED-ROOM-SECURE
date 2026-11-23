@@ -162,6 +162,7 @@ public final class ZEUSBackupClient {
             if (files == null || files.length == 0) return;
             for (File file : files) {
                 HttpsURLConnection connection = null;
+                boolean requestBodySent = false;
                 try {
                     byte[] encrypted = readAll(file);
                     byte[] clear = decrypt(app, encrypted);
@@ -177,6 +178,7 @@ public final class ZEUSBackupClient {
                     connection.setRequestProperty("X-Idempotency-Key", operationId);
                     OutputStream out = connection.getOutputStream();
                     out.write(clear); out.flush(); out.close();
+                    requestBodySent = true;
                     int status = connection.getResponseCode();
                     InputStream input = status >= 200 && status < 400 ? connection.getInputStream() : connection.getErrorStream();
                     String response = input == null ? "" : new String(readAll(input), UTF8);
@@ -200,12 +202,17 @@ public final class ZEUSBackupClient {
                         break;
                     }
                 } catch (Exception networkOrStorageError) {
-                    // The request may have reached Telegram even if its response was lost.
-                    // Quarantine ambiguous outcomes instead of automatically sending duplicates.
-                    String operationId = file.getName().substring(0, file.getName().length() - 6);
-                    File uncertain = new File(file.getParentFile(), operationId + ".unknown");
-                    file.renameTo(uncertain);
-                    lastStatus = "نتيجة الإرسال غير مؤكدة؛ أوقفنا الإعادة التلقائية لتجنب إرسال نسخة مكررة. راجع Telegram قبل أي إعادة يدوية.";
+                    if (!requestBodySent) {
+                        // No complete request body was handed off; retain the encrypted item for an online retry.
+                        lastStatus = "تعذّر الاتصال قبل إرسال البيانات؛ النسخة محفوظة مشفّرة وستُعاد المحاولة عند عودة الاتصال.";
+                        scheduleRetry(app);
+                    } else {
+                        // Telegram may have accepted the request even if its response was lost.
+                        String operationId = file.getName().substring(0, file.getName().length() - 6);
+                        File uncertain = new File(file.getParentFile(), operationId + ".unknown");
+                        file.renameTo(uncertain);
+                        lastStatus = "نتيجة الإرسال غير مؤكدة؛ أوقفنا الإعادة التلقائية لتجنب إرسال نسخة مكررة. راجع Telegram قبل أي إعادة يدوية.";
+                    }
                     break;
                 } finally {
                     if (connection != null) connection.disconnect();
