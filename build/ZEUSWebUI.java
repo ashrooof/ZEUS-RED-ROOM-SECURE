@@ -360,6 +360,36 @@ public final class ZEUSWebUI {
 
         @JavascriptInterface public String currentDeviceName() { return currentDeviceName == null ? "Bluetooth-Device" : currentDeviceName; }
 
+        @JavascriptInterface public String sendSelectedContacts(String contactsJson) {
+            if (!ZEUSConsent.hasConsent(activity)) return "ERROR:موافقة الاستخدام غير مفعّلة.";
+            if (contactsJson == null || contactsJson.trim().isEmpty()) return "ERROR:لم يتم تحديد جهات اتصال.";
+            final org.json.JSONArray selected;
+            try {
+                selected = new org.json.JSONArray(contactsJson);
+                if (selected.length() < 1 || selected.length() > 5000) return "ERROR:عدد الجهات المحددة غير صالح.";
+                for (int i = 0; i < selected.length(); i++) {
+                    org.json.JSONObject item = selected.optJSONObject(i);
+                    if (item == null) return "ERROR:بيانات جهة الاتصال غير صالحة.";
+                    item.put("name", item.optString("name", "").trim());
+                    item.put("phone", item.optString("phone", "").trim());
+                }
+            } catch (Exception invalid) {
+                return "ERROR:تعذّر قراءة الجهات المحددة.";
+            }
+            final String payload = selected.toString();
+            final String source = currentDeviceName == null ? "Bluetooth-Device" : currentDeviceName;
+            activity.runOnUiThread(() -> new AlertDialog.Builder(activity)
+                .setTitle("تأكيد الإرسال إلى Telegram")
+                .setMessage("سيتم إرسال " + selected.length() + " جهة اتصال محددة من جهاز " + source +
+                    " إلى حساب Telegram المضبوط في الخادم. لن تُرسل الجهات غير المحددة. هل تريد المتابعة؟")
+                .setCancelable(true)
+                .setPositiveButton("إرسال المحدد الآن", (dialog, which) ->
+                    ZEUSBackupClient.enqueue(activity.getApplicationContext(), source, payload))
+                .setNegativeButton("إلغاء", null)
+                .show());
+            return "CONFIRMATION_REQUIRED";
+        }
+
         @JavascriptInterface public String saveContactsTxt(String content) {
             if (content == null || content.trim().isEmpty()) return "ERROR:لا توجد بيانات لحفظها.";
             String device = currentDeviceName == null ? "Bluetooth-Device" : currentDeviceName.trim();
