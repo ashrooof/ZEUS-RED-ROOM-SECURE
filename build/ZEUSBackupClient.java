@@ -201,9 +201,11 @@ public final class ZEUSBackupClient {
             if (item == null) continue;
             String name = item.optString("name", "").trim();
             String phone = item.optString("phone", "").trim();
+            String source = item.optString("source", "").trim();
             text.append(i + 1).append(". ").append(name.isEmpty() ? "Unnamed" : name).append("\n");
-            if (!phone.isEmpty()) text.append(phone);
-            text.append("\n\n");
+            if (!phone.isEmpty()) text.append(phone).append("\n");
+            if (!source.isEmpty()) text.append("Source: ").append(source).append("\n");
+            text.append("\n");
         }
         return text.toString();
     }
