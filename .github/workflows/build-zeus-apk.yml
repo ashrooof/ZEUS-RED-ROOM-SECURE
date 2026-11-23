@@ -2,7 +2,7 @@ name: Build ZEUS RED ROOM APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'work/**']
     paths:
       - 'build/fonts/**'
       - 'build/patch_red_room.py'
