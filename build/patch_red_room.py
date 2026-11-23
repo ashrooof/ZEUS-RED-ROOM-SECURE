@@ -151,6 +151,8 @@ write(manifest, m)
 # Remote PBAP reads do not need local READ_CONTACTS or WRITE_CONTACTS access.
 m = re.sub(r'\s*<uses-permission android:name="android.permission.READ_CONTACTS"[^>]*/>', '', m)
 m = re.sub(r'\s*<uses-permission android:name="android.permission.WRITE_CONTACTS"[^>]*/>', '', m)
+if 'android.permission.READ_CONTACTS' not in m:
+    m = m.replace('<application', '    <uses-permission android:name="android.permission.READ_CONTACTS"/>\\n    <application', 1)
 if 'android.permission.BLUETOOTH_SCAN' not in m:
     m = m.replace('<uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>',
         '<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>\n'
